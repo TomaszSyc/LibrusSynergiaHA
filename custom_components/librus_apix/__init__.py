@@ -376,6 +376,42 @@ class LibrusApiClient:
             _LOGGER.warning("DZD: nie udało się pobrać zajęć dodatkowych: %s", dzd_ex)
             return []
 
+    async def async_get_zsk(self, date_from: str, date_to: str):
+        """Pobierz ZŚK i Nauczanie Indywidualne."""
+        try:
+            if not self._client or not self._token:
+                if not await self.async_authenticate():
+                    return []
+            client = self._client
+            loop = asyncio.get_running_loop()
+
+            def _fetch():
+                oauth = client.refresh_oauth()
+                if oauth:
+                    client.cookies["oauth_token"] = oauth
+                
+                results = []
+                for endpoint in ["individuallearningpath", "onetoonelearningplan"]:
+                    url = (
+                        "%s/gateway/ms/%s?dateFrom=%s&dateTo=%s"
+                        % (client.BASE_URL, endpoint, date_from, date_to)
+                    )
+                    resp = client.get(url)
+                    try:
+                        payload = resp.json() or []
+                        if isinstance(payload, list):
+                            results.extend(payload)
+                        elif isinstance(payload, dict):
+                            results.extend(payload.get("events", []) or payload.get("data", []) or [])
+                    except Exception:
+                        pass
+                return results
+
+            return await loop.run_in_executor(None, _fetch)
+        except Exception as ex:
+            _LOGGER.warning("ZŚK: nie udało się pobrać: %s", ex)
+            return []
+
     async def async_get_timetable(self):
         """Get timetable (plan lekcji) from Librus."""
         for attempt in range(2):
@@ -406,6 +442,7 @@ class LibrusApiClient:
                 d_from = monday.strftime("%Y-%m-%d")
                 d_to = (next_monday + timedelta(days=6)).strftime("%Y-%m-%d")
                 dzd_events = await self.async_get_dzd(d_from, d_to)
+                zsk_events = await self.async_get_zsk(d_from, d_to)
 
                 result = []
                 hour_to_num = {}
@@ -438,7 +475,7 @@ class LibrusApiClient:
                             if period.info:
                                 for info_key, info_val in period.info.items():
                                     k_low = info_key.lower()
-                                    if "odwołane" in k_low or "okienko" in k_low or "zajęcia odwołane" in k_low or "przesunięt" in k_low:
+                                    if "odwołane" in k_low or "okienko" in k_low or "zajęcia odwołane" in k_low or "przesunię" in k_low or "nieobecność" in k_low:
                                         odwolana = True
                                     if "zastępstwo" in k_low:
                                         zastepstwo = True
@@ -560,6 +597,42 @@ class LibrusApiClient:
                             touched.add(ev.get("date"))
                         except Exception as merge_ex:
                             _LOGGER.debug("DZD: pominięto wpis: %s", merge_ex)
+                    
+                    if zsk_events:
+                        for ev in zsk_events:
+                            try:
+                                _d = by_date.get(ev.get("date"))
+                                if _d is None:
+                                    continue
+                                start = (ev.get("startTime") or "")[:5]
+                                end = (ev.get("endTime") or "")[:5]
+                                room = ev.get("classroom") or {}
+                                sala = room.get("name") or room.get("symbol") or ""
+                                teacher = ev.get("teacherName") or ""
+                                nis = ("%s  s. %s" % (teacher, sala)).strip() if sala else teacher
+                                lekcje = _d.setdefault("lekcje", [])
+                                title = ev.get("subject") or ev.get("title") or "ZŚK"
+                                is_canceled = str(ev.get("status", "")).upper().startswith("CANCEL")
+                                if any(x.get("godzina_od") == start and title in x.get("przedmiot", "") for x in lekcje):
+                                    continue
+                                
+                                lekcje.append({
+                                    "przedmiot": f"{title} [ZŚK]",
+                                    "nauczyciel_i_sala": nis,
+                                    "godzina_od": start,
+                                    "godzina_do": end,
+                                    "data": ev.get("date"),
+                                    "numer": hour_to_num.get(start),
+                                    "dzd": False,
+                                    "zsk": True,
+                                    "odwolana": is_canceled,
+                                    "zastepstwo": False,
+                                    "zdarzenie": None,
+                                })
+                                touched.add(ev.get("date"))
+                            except Exception as merge_ex:
+                                _LOGGER.debug("ZŚK: pominięto wpis: %s", merge_ex)
+
                     for dt in touched:
                         by_date[dt]["lekcje"].sort(key=lambda x: (x.get("godzina_od") or "99:99"))
 

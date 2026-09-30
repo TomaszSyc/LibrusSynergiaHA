@@ -227,6 +227,32 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                                         if len(opis_str) > 100:
                                             opis_str = opis_str[:97] + "..."
                                         lekcja["zdarzenie_opis"] = opis_str
+                        else:
+                            # Jesli nie dopasowano lekcji z planu, a terminarz ma numer lekcji (np. poprawa po lekcjach)
+                            if ev_num:
+                                try:
+                                    first_num = int(str(ev_num).split("-")[0])
+                                    ev_opis = t_ev.get("szczegoly", {}).get("Opis")
+                                    opis_str = str(ev_opis).strip() if ev_opis and str(ev_opis).lower() != "unknown" else ""
+                                    if len(opis_str) > 100:
+                                        opis_str = opis_str[:97] + "..."
+                                        
+                                    day.setdefault("lekcje", []).append({
+                                        "przedmiot": ev_subject or ev_title,
+                                        "nauczyciel_i_sala": "",
+                                        "godzina_od": "??:??",
+                                        "godzina_do": "??:??",
+                                        "data": ev_date,
+                                        "numer": first_num,
+                                        "dzd": False,
+                                        "odwolana": False,
+                                        "zastepstwo": False,
+                                        "zdarzenie": ev_title,
+                                        "zdarzenie_opis": opis_str,
+                                    })
+                                    day["lekcje"].sort(key=lambda x: (int(x.get("numer") or 99), x.get("godzina_od") or "99:99"))
+                                except Exception:
+                                    pass
 
             result = {
                 "student_info": student_info,
