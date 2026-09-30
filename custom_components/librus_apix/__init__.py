@@ -389,22 +389,26 @@ class LibrusApiClient:
                 oauth = client.refresh_oauth()
                 if oauth:
                     client.cookies["oauth_token"] = oauth
-                
+
                 results = []
-                for endpoint in ["individuallearningpath", "onetoonelearningplan"]:
+                for endpoint in ["IndividualLearningPath", "OneToOneLearningPlan"]:
                     url = (
-                        "%s/gateway/ms/%s?dateFrom=%s&dateTo=%s"
+                        "%s/gateway/api/2.0/Timetables/%s"
+                        "?dateFrom=%s&dateTo=%s&hideOutdatedEntries=false"
                         % (client.BASE_URL, endpoint, date_from, date_to)
                     )
                     resp = client.get(url)
-                    try:
-                        payload = resp.json() or []
-                        if isinstance(payload, list):
-                            results.extend(payload)
-                        elif isinstance(payload, dict):
-                            results.extend(payload.get("events", []) or payload.get("data", []) or [])
-                    except Exception:
-                        pass
+                    payload = resp.json() or {}
+                    data = payload.get("data")
+                    if data is None:
+                        _LOGGER.warning(
+                            "ZŚK: brak pola 'data' dla %s (HTTP %s): %s",
+                            endpoint,
+                            getattr(resp, "status_code", "?"),
+                            str(payload)[:200],
+                        )
+                        continue
+                    results.extend(data)
                 return results
 
             return await loop.run_in_executor(None, _fetch)
@@ -561,10 +565,11 @@ class LibrusApiClient:
                         "lekcje": day_list
                     })
 
-                # LOCAL PATCH (DZD): wlej zajęcia dodatkowe do właściwych dni po dacie.
+                # LOCAL PATCH: wlej DZD oraz ZŚK do właściwych dni po dacie.
+                by_date = {_d["data"]: _d for _d in result}
+                touched = set()
+
                 if dzd_events:
-                    by_date = {_d["data"]: _d for _d in result}
-                    touched = set()
                     for ev in dzd_events:
                         try:
                             if str(ev.get("status", "")).upper().startswith("CANCEL"):
@@ -597,44 +602,44 @@ class LibrusApiClient:
                             touched.add(ev.get("date"))
                         except Exception as merge_ex:
                             _LOGGER.debug("DZD: pominięto wpis: %s", merge_ex)
-                    
-                    if zsk_events:
-                        for ev in zsk_events:
-                            try:
-                                _d = by_date.get(ev.get("date"))
-                                if _d is None:
-                                    continue
-                                start = (ev.get("startTime") or "")[:5]
-                                end = (ev.get("endTime") or "")[:5]
-                                room = ev.get("classroom") or {}
-                                sala = room.get("name") or room.get("symbol") or ""
-                                teacher = ev.get("teacherName") or ""
-                                nis = ("%s  s. %s" % (teacher, sala)).strip() if sala else teacher
-                                lekcje = _d.setdefault("lekcje", [])
-                                title = ev.get("subject") or ev.get("title") or "ZŚK"
-                                is_canceled = str(ev.get("status", "")).upper().startswith("CANCEL")
-                                if any(x.get("godzina_od") == start and title in x.get("przedmiot", "") for x in lekcje):
-                                    continue
-                                
-                                lekcje.append({
-                                    "przedmiot": f"{title} [ZŚK]",
-                                    "nauczyciel_i_sala": nis,
-                                    "godzina_od": start,
-                                    "godzina_do": end,
-                                    "data": ev.get("date"),
-                                    "numer": hour_to_num.get(start),
-                                    "dzd": False,
-                                    "zsk": True,
-                                    "odwolana": is_canceled,
-                                    "zastepstwo": False,
-                                    "zdarzenie": None,
-                                })
-                                touched.add(ev.get("date"))
-                            except Exception as merge_ex:
-                                _LOGGER.debug("ZŚK: pominięto wpis: %s", merge_ex)
 
-                    for dt in touched:
-                        by_date[dt]["lekcje"].sort(key=lambda x: (x.get("godzina_od") or "99:99"))
+                if zsk_events:
+                    for ev in zsk_events:
+                        try:
+                            _d = by_date.get(ev.get("date"))
+                            if _d is None:
+                                continue
+                            start = (ev.get("startTime") or "")[:5]
+                            end = (ev.get("endTime") or "")[:5]
+                            room = ev.get("classroom") or {}
+                            sala = room.get("symbol") or room.get("name") or ""
+                            teacher = ev.get("teacherName") or ""
+                            nis = ("%s  s. %s" % (teacher, sala)).strip() if sala else teacher
+                            lekcje = _d.setdefault("lekcje", [])
+                            title = ev.get("subject") or ev.get("title") or "ZŚK"
+                            is_canceled = str(ev.get("status", "")).upper().startswith("CANCEL")
+                            if any(x.get("godzina_od") == start and title in x.get("przedmiot", "") for x in lekcje):
+                                continue
+
+                            lekcje.append({
+                                "przedmiot": f"{title} [ZŚK]",
+                                "nauczyciel_i_sala": nis,
+                                "godzina_od": start,
+                                "godzina_do": end,
+                                "data": ev.get("date"),
+                                "numer": hour_to_num.get(start),
+                                "dzd": False,
+                                "zsk": True,
+                                "odwolana": is_canceled,
+                                "zastepstwo": False,
+                                "zdarzenie": None,
+                            })
+                            touched.add(ev.get("date"))
+                        except Exception as merge_ex:
+                            _LOGGER.debug("ZŚK: pominięto wpis: %s", merge_ex)
+
+                for dt in touched:
+                    by_date[dt]["lekcje"].sort(key=lambda x: (x.get("godzina_od") or "99:99"))
 
                 return result
 
