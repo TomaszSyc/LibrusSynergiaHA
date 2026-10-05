@@ -118,6 +118,13 @@ class LibrusApiClient:
                                     komentarz_str = comments_obj.text
                                 else:
                                     komentarz_str = str(comments_obj)
+                            
+                            if not komentarz_str:
+                                desc_text = getattr(grade, 'desc', '') or ''
+                                for line in desc_text.splitlines():
+                                    if line.startswith("Komentarz:"):
+                                        komentarz_str = line.split(":", 1)[1].strip()
+                                        break
                                     
                             all_grades.append({
                                 'subject': subject,
@@ -332,6 +339,17 @@ class LibrusApiClient:
                                 continue
                             dni = ["Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota", "Niedziela"]
                             for ev in day_events:
+                                szczegoly = {}
+                                last_key = None
+                                for k, v in (ev.data or {}).items():
+                                    if v == "unknown" and last_key:
+                                        szczegoly[last_key] += f"\n{k}"
+                                    elif last_key == "Opis" and k not in ("Data dodania", "Nauczyciel", "Przedmiot", "Kategoria"):
+                                        szczegoly[last_key] += f"\n{k}: {v}"
+                                    else:
+                                        szczegoly[k] = v
+                                        last_key = k
+
                                 events.append({
                                     "data": event_date.strftime("%Y-%m-%d"),
                                     "tydzien": dni[event_date.weekday()],
@@ -339,7 +357,7 @@ class LibrusApiClient:
                                     "przedmiot": ev.subject,
                                     "godzina": ev.hour,
                                     "numer_lekcji": ev.number,
-                                    "szczegoly": ev.data,
+                                    "szczegoly": szczegoly,
                                     "href": ev.href,
                                 })
                     return sorted(events, key=lambda e: e["data"])
