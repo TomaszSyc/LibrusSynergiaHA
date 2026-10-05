@@ -83,11 +83,14 @@ class LibrusTimetableCalendar(CoordinatorEntity, CalendarEntity):
                     if not godzina_od or not godzina_do:
                         continue
                         
-                    dt_od = datetime.strptime(f"{lekcja_data} {godzina_od}", "%Y-%m-%d %H:%M")
-                    dt_do = datetime.strptime(f"{lekcja_data} {godzina_do}", "%Y-%m-%d %H:%M")
-                    
-                    dt_od = dt_od.replace(tzinfo=tz)
-                    dt_do = dt_do.replace(tzinfo=tz)
+                    if "??:??" in godzina_od or "??:??" in godzina_do:
+                        dt_od = datetime.strptime(lekcja_data, "%Y-%m-%d").date()
+                        dt_do = dt_od + timedelta(days=1)
+                    else:
+                        dt_od = datetime.strptime(f"{lekcja_data} {godzina_od}", "%Y-%m-%d %H:%M")
+                        dt_do = datetime.strptime(f"{lekcja_data} {godzina_do}", "%Y-%m-%d %H:%M")
+                        dt_od = dt_od.replace(tzinfo=tz)
+                        dt_do = dt_do.replace(tzinfo=tz)
                     
                     przedmiot = lekcja.get("przedmiot", "Lekcja")
                     odwolana = lekcja.get("odwolana", False)

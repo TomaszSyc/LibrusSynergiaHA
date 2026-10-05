@@ -107,6 +107,18 @@ class LibrusApiClient:
                         for grade in grades_list:
                             if grade.semester != current_sem:
                                 continue
+                            
+                            # Extract comment if available (as string)
+                            komentarz_str = ""
+                            comments_obj = getattr(grade, 'comments', None)
+                            if comments_obj:
+                                if isinstance(comments_obj, list):
+                                    komentarz_str = " | ".join(c.text for c in comments_obj if hasattr(c, 'text'))
+                                elif hasattr(comments_obj, 'text'):
+                                    komentarz_str = comments_obj.text
+                                else:
+                                    komentarz_str = str(comments_obj)
+                                    
                             all_grades.append({
                                 'subject': subject,
                                 'grade': grade.grade,
@@ -114,6 +126,7 @@ class LibrusApiClient:
                                 'category': grade.category,
                                 'teacher': getattr(grade, 'teacher', ''),
                                 'semester': grade.semester,
+                                'komentarz': komentarz_str,
                                 'type': 'numeric'
                             })
 
@@ -124,14 +137,26 @@ class LibrusApiClient:
                             if desc_grade.semester != current_sem:
                                 continue
                             grade_val = desc_grade.grade.strip()
-                            if grade_val and (grade_val.replace('+', '').replace('-', '').isdigit() or
-                                            grade_val in ['1', '2', '3', '4', '5', '6', '1+', '1-', '2+', '2-',
-                                                         '3+', '3-', '4+', '4-', '5+', '5-', '6+', '6-']):
+                            
+                            is_valid = False
+                            if grade_val:
+                                clean_val = grade_val.replace('+', '').replace('-', '')
+                                if clean_val.isdigit():
+                                    is_valid = True
+                                elif clean_val.upper() in ['A', 'B', 'C', 'D', 'E', 'F']:
+                                    is_valid = True
+                                else:
+                                    import re
+                                    if re.search(r'^(\d+)(?:\s*(?:%|p|pkt))?$', grade_val.lower()):
+                                        is_valid = True
+                                        
+                            if is_valid:
                                 
                                 desc_text = getattr(desc_grade, 'desc', '')
                                 parsed_cat = ""
                                 parsed_skill = ""
                                 parsed_teacher = getattr(desc_grade, 'teacher', '')
+                                parsed_comment = ""
                                 
                                 for line in desc_text.split('\n'):
                                     if line.startswith("Kategoria:"):
@@ -140,6 +165,8 @@ class LibrusApiClient:
                                         parsed_skill = line.split(":", 1)[1].strip()
                                     elif not parsed_teacher and line.startswith("Nauczyciel:"):
                                         parsed_teacher = line.split(":", 1)[1].strip()
+                                    elif line.startswith("Komentarz:"):
+                                        parsed_comment = line.split(":", 1)[1].strip()
                                 
                                 final_cat = parsed_cat
                                 if not final_cat and parsed_skill:
@@ -154,6 +181,7 @@ class LibrusApiClient:
                                     'category': final_cat,
                                     'teacher': parsed_teacher,
                                     'semester': desc_grade.semester,
+                                    'komentarz': parsed_comment,
                                     'type': 'descriptive'
                                 })
 
@@ -479,9 +507,9 @@ class LibrusApiClient:
                             if period.info:
                                 for info_key, info_val in period.info.items():
                                     k_low = info_key.lower()
-                                    if "odwołane" in k_low or "okienko" in k_low or "zajęcia odwołane" in k_low or "przesunię" in k_low or "nieobecność" in k_low:
+                                    if k_low in ("o", "n", "p") or "odwołane" in k_low or "okienko" in k_low or "zajęcia odwołane" in k_low or "przesunię" in k_low or "nieobecność" in k_low:
                                         odwolana = True
-                                    if "zastępstwo" in k_low:
+                                    if k_low == "z" or "zastępstwo" in k_low:
                                         zastepstwo = True
 
                                     if isinstance(info_val, dict):

@@ -42,10 +42,43 @@ def _jest_nowa(date_str: str) -> bool:
 
 def _srednia_ocen(oceny: List[Dict]) -> Optional[float]:
     """Oblicz srednia ocen z listy ocen."""
+    import re
     wartosci = []
+    
+    literowe = {"A": 5.0, "B": 4.0, "C": 2.0, "D": 1.0, "E": 1.0, "F": 1.0}
+    
     for g in oceny:
-        grade_str = g.get("ocena", "")
+        grade_str = g.get("ocena", "").strip()
+        if not grade_str:
+            continue
+            
         try:
+            # 1. Sprawdz czy to czysta liczba wielocyfrowa lub z %/p/pkt (np. 95, 100, 95%, 85 pkt)
+            if grade_str.isdigit() and len(grade_str) > 1:
+                # Jesli dwu- lub trzycyfrowa, np. 95, bierzemy calosc jako punktacja
+                wartosci.append(float(grade_str))
+                continue
+                
+            match = re.search(r'^(\d+)(?:\s*(?:%|p|pkt))?$', grade_str.lower())
+            if match:
+                val = float(match.group(1))
+                if val > 6 or grade_str.lower().endswith(('%', 'p', 'pkt')):
+                    wartosci.append(val)
+                    continue
+
+            # 2. Sprawdz czy to ocena literowa (klasy 1-3)
+            base_char = grade_str[0].upper()
+            if base_char in literowe:
+                base = literowe[base_char]
+                if len(grade_str) > 1:
+                    if "+" in grade_str:
+                        base += 0.5
+                    elif "-" in grade_str:
+                        base -= 0.25
+                wartosci.append(base)
+                continue
+
+            # 3. Standardowa logika Librusa 1-6
             base = float(grade_str[0])
             if len(grade_str) > 1:
                 if "+" in grade_str:
@@ -158,6 +191,7 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                     "kategoria": grade["category"],
                     "nauczyciel": grade["teacher"],
                     "semestr": grade.get("semester"),
+                    "komentarz": grade.get("komentarz", ""),
                     "jest_nowa": _jest_nowa(grade["date"]),
                 })
 

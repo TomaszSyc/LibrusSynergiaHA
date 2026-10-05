@@ -108,6 +108,42 @@ entities:
     name: "Szczęśliwy numerek"
 ```
 
+### Dynamiczna karta wszystkich ocen (Markdown)
+
+Ta karta automatycznie wylistuje wszystkie przedmioty, pokaże ich średnie oraz ciąg wystawionych ocen, naśladując wygląd tabeli prosto ze strony Librusa.
+
+> **WAŻNE:** Znajdź końcówkę nazwy swojej encji w **Developer Tools → States** (np. `janek_kowalski`). Przypisz ją do zmiennej `profil` na samym początku kodu.
+
+```yaml
+type: markdown
+title: "Oceny"
+content: |
+  {% set profil = 'imie_nazwisko' %}
+  
+  {% set encja_oceny = 'sensor.librus_' ~ profil ~ '_oceny' %}
+  {% set encja_srednia = 'sensor.librus_' ~ profil ~ '_srednia_ocen' %}
+  
+  | Przedmiot | Wszystkie Oceny | Średnia |
+  | :--- | :--- | :---: |
+  {%- set przedmioty = state_attr(encja_oceny, 'oceny_wg_przedmiotu') %}
+  {%- set srednie = state_attr(encja_srednia, 'srednie_wg_przedmiotow') %}
+  {%- if przedmioty %}
+    {%- for nazwa, oceny in przedmioty.items() %}
+  | **{{ nazwa }}** | {% for o in oceny %}{{ o.ocena }}{% if not loop.last %}, {% endif %}{% endfor %} | **{{ srednie.get(nazwa, '-') if srednie else '-' }}** |
+    {%- endfor %}
+  {%- else %}
+  | Brak danych dla wpisanego profilu | - | - |
+  {%- endif %}
+```
+
+> **Wskazówka:** Domyślnie Home Assistant dopasowuje szerokość tabel w kartach Markdown do ich zawartości tekstu (tabela nie rozciąga się na 100% szerokości karty). Aby zmusić tabelę do zajęcia pełnej szerokości, użyj popularnego dodatku **card-mod** (do pobrania w HACS) i dodaj na końcu konfiguracji karty poniższy kod:
+> ```yaml
+> card_mod:
+>   style:
+>     ha-markdown $: |
+>       table { width: 100% !important; }
+> ```
+
 ### Karta wiadomości (Markdown - Dynamiczna)
 
 Ta karta automatycznie dostosowuje się do ilości wiadomości i nie wyświetla pustych wierszy!
@@ -494,6 +530,8 @@ Ogromne podziękowania dla **@km4lin** za cenną kontrybucję i naprawę błędu
 Dziękuję również dla **@Yauhenda** za dodanie wsparcia dla zajęć dodatkowych (DZD) w planie lekcji!
 Wielkie podziękowania dla **@jarecki** za wsparcie kodu w Pull Request #9, co pozwoliło poprawić działanie bibliotek.
 Dzięki dla **@sgurgul** za celne zgłoszenia (Issue #12, #13, #14) i cenne sugestie optymalizacyjne, które weszły w skład wersji 2.2.1!
+Ogromne podziękowania dla **@ebabaj** za nieoceniony wkład w rozwój integracji i naprawę zajęć ZŚK (PR #20)!
+Wielkie dzięki również dla **@Lucaspog** za świetny pomysł i przygotowanie podwalin pod komentarze do ocen (PR #21)!
 
 ## 👨‍💻 Autorzy i podziękowania
 
