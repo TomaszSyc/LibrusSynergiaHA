@@ -236,7 +236,7 @@ content: |
   {% elif zdarzenia | length > 0 %}
   | Data | Dzień | Typ | Przedmiot | Opis |
   |------|-------|-----|-----------|------|
-  {% for z in zdarzenia %} | **{{ z.data }}** | {{ z.tydzien }} | {{ z.tytul }} | {{ z.przedmiot }} | {{ z.szczegoly.Opis | replace('\n', '<br>') if z.szczegoly.Opis != 'unknown' else '' }} |
+  {% for z in zdarzenia %} | **{{ z.data }}** | {{ z.tydzien }} | {{ z.tytul }} | {{ z.przedmiot }} | {{ z.szczegoly.get('Opis', '') | replace('\n', '<br>') if z.szczegoly.get('Opis', 'unknown') != 'unknown' else '' }} |
   {% endfor %}
   {% else %} 
   Brak nadchodzących zdarzeń. 
@@ -264,7 +264,7 @@ content: |
   {% if sprawdziany | length > 0 %}
   | Data | Dzień | Typ | Przedmiot | Opis |
   |------|-------|-----|-----------|------|
-  {% for z in sprawdziany %} | **{{ z.data }}** | {{ z.tydzien }} | {{ z.tytul }} | {{ z.przedmiot }} | {{ z.szczegoly.Opis | replace('\n', '<br>') if z.szczegoly.Opis != 'unknown' else '' }} |
+  {% for z in sprawdziany %} | **{{ z.data }}** | {{ z.tydzien }} | {{ z.tytul }} | {{ z.przedmiot }} | {{ z.szczegoly.get('Opis', '') | replace('\n', '<br>') if z.szczegoly.get('Opis', 'unknown') != 'unknown' else '' }} |
   {% endfor %}
   {% else %} 
   Brak nadchodzących sprawdzianów. 
