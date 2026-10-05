@@ -11,6 +11,7 @@ permissions: {}
 
 jobs:
   validate-hacs:
+    if: github.repository == 'procaktomasz/LibrusSynergiaHA'
     runs-on: "ubuntu-latest"
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
