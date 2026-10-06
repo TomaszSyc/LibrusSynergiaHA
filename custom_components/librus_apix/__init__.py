@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import traceback
-from datetime import date
 from typing import Dict, Any
 
 import voluptuous as vol
@@ -17,19 +16,10 @@ from librus_apix.client import Client, new_client
 from librus_apix.exceptions import TokenError
 
 from .const import DOMAIN, SCAN_INTERVAL
+from .oceny import biezacy_semestr, oznacz_zastapione, skala_oceny
 
 _LOGGER = logging.getLogger(__name__)
 
-
-def _current_semester() -> int:
-    """Zwroc numer biezacego semestru (1 lub 2) wg polskiego roku szkolnego.
-
-    Semestr 1: wrzesien (9) - styczen (1)
-    Semestr 2: luty (2) - czerwiec (6)
-    Lipiec-sierpien to wakacje - zwracamy 2 (ostatni semestr roku).
-    """
-    m = date.today().month
-    return 1 if m >= 9 else 2
 
 PLATFORMS = ["sensor", "calendar", "todo", "button"]
 
@@ -57,6 +47,7 @@ class LibrusApiClient:
         self._client: Client = None
         self._token = None
         self._auth_lock = asyncio.Lock()
+        self.biezacy_semestr = 1
 
     def _reset_auth(self) -> None:
         """Reset authentication state to force re-authentication on next call."""
@@ -95,7 +86,10 @@ class LibrusApiClient:
                     None, get_grades, client, "all"
                 )
 
-                current_sem = _current_semester()
+                self.biezacy_semestr = biezacy_semestr(
+                    numeric_grades[1], descriptive_grades[1]
+                )
+                current_sem = self.biezacy_semestr
                 _LOGGER.debug("Filtrowanie ocen dla semestru %d", current_sem)
 
                 # Process all grades
@@ -104,6 +98,7 @@ class LibrusApiClient:
                 # Process numeric grades (only current semester)
                 for subject_grades in numeric_grades:
                     for subject, grades_list in subject_grades.items():
+                        subject_numeric = []
                         for grade in grades_list:
                             if grade.semester != current_sem:
                                 continue
@@ -126,7 +121,7 @@ class LibrusApiClient:
                                         komentarz_str = line.split(":", 1)[1].strip()
                                         break
                                     
-                            all_grades.append({
+                            subject_numeric.append({
                                 'subject': subject,
                                 'grade': grade.grade,
                                 'date': grade.date,
@@ -134,8 +129,14 @@ class LibrusApiClient:
                                 'teacher': getattr(grade, 'teacher', ''),
                                 'semester': grade.semester,
                                 'komentarz': komentarz_str,
-                                'type': 'numeric'
+                                'type': 'numeric',
+                                'weight': getattr(grade, 'weight', 1),
+                                'counts': getattr(grade, 'counts', True),
+                                'improvement': "Poprawa oceny" in (getattr(grade, 'desc', '') or ''),
+                                'superseded': False,
+                                'scale': skala_oceny(grade.grade),
                             })
+                        all_grades.extend(oznacz_zastapione(subject_numeric))
 
                 # Process descriptive grades (only current semester, many are actually numeric)
                 for subject_grades in descriptive_grades:
@@ -189,7 +190,12 @@ class LibrusApiClient:
                                     'teacher': parsed_teacher,
                                     'semester': desc_grade.semester,
                                     'komentarz': parsed_comment,
-                                    'type': 'descriptive'
+                                    'type': 'descriptive',
+                                    'weight': 1,
+                                    'counts': True,
+                                    'improvement': False,
+                                    'superseded': False,
+                                    'scale': skala_oceny(desc_grade.grade),
                                 })
 
                 return all_grades

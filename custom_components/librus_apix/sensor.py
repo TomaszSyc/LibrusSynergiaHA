@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .const import DOMAIN, SCAN_INTERVAL
+from .oceny import srednia_procentowa, srednia_wazona
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,57 +39,6 @@ def _jest_nowa(date_str: str) -> bool:
         except ValueError:
             continue
     return False
-
-
-def _srednia_ocen(oceny: List[Dict]) -> Optional[float]:
-    """Oblicz srednia ocen z listy ocen."""
-    import re
-    wartosci = []
-    
-    literowe = {"A": 5.0, "B": 4.0, "C": 2.0, "D": 1.0, "E": 1.0, "F": 1.0}
-    
-    for g in oceny:
-        grade_str = g.get("ocena", "").strip()
-        if not grade_str:
-            continue
-            
-        try:
-            # 1. Sprawdz czy to czysta liczba wielocyfrowa lub z %/p/pkt (np. 95, 100, 95%, 85 pkt)
-            if grade_str.isdigit() and len(grade_str) > 1:
-                # Jesli dwu- lub trzycyfrowa, np. 95, bierzemy calosc jako punktacja
-                wartosci.append(float(grade_str))
-                continue
-                
-            match = re.search(r'^(\d+)(?:\s*(?:%|p|pkt))?$', grade_str.lower())
-            if match:
-                val = float(match.group(1))
-                if val > 6 or grade_str.lower().endswith(('%', 'p', 'pkt')):
-                    wartosci.append(val)
-                    continue
-
-            # 2. Sprawdz czy to ocena literowa (klasy 1-3)
-            base_char = grade_str[0].upper()
-            if base_char in literowe:
-                base = literowe[base_char]
-                if len(grade_str) > 1:
-                    if "+" in grade_str:
-                        base += 0.5
-                    elif "-" in grade_str:
-                        base -= 0.25
-                wartosci.append(base)
-                continue
-
-            # 3. Standardowa logika Librusa 1-6
-            base = float(grade_str[0])
-            if len(grade_str) > 1:
-                if "+" in grade_str:
-                    base += 0.5
-                elif "-" in grade_str:
-                    base -= 0.25
-            wartosci.append(base)
-        except (ValueError, IndexError):
-            continue
-    return round(sum(wartosci) / len(wartosci), 2) if wartosci else None
 
 
 async def async_setup_entry(
@@ -149,9 +99,6 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> Dict[str, Any]:
         """Pobierz aktualne dane z API Librus."""
-        from datetime import date as _date
-        current_sem = 1 if _date.today().month >= 9 else 2
-
         try:
             student_info = await self.client.async_get_student_information()
             grades = await self.client.async_get_grades()
@@ -193,6 +140,11 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                     "semestr": grade.get("semester"),
                     "komentarz": grade.get("komentarz", ""),
                     "jest_nowa": _jest_nowa(grade["date"]),
+                    "waga": grade.get("weight", 1),
+                    "licz_do_sredniej": grade.get("counts", True),
+                    "poprawa": grade.get("improvement", False),
+                    "zastapiona": grade.get("superseded", False),
+                    "skala": grade.get("scale"),
                 })
 
             wiadomosci = (
@@ -298,7 +250,7 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                 "plan_lekcji": plan_lekcji,
                 "frekwencja": frekwencja,
                 "ogloszenia": ogloszenia,
-                "semestr_biezacy": current_sem,
+                "semestr_biezacy": getattr(self.client, "biezacy_semestr", 1),
             }
 
             # Pierwsze pobranie - tylko zapamietaj stan, nie wysylaj powiadomien
@@ -573,7 +525,7 @@ class LibrusPrzedmiotSensor(CoordinatorEntity, SensorEntity):
         if not oceny:
             return {}
 
-        srednia = _srednia_ocen(oceny)
+        srednia = srednia_wazona(oceny)
 
         # Najnowsza ocena wg daty
         najnowsza: Optional[Dict] = None
@@ -593,6 +545,7 @@ class LibrusPrzedmiotSensor(CoordinatorEntity, SensorEntity):
             "oceny": oceny,
             "lista_ocen": ", ".join(g["ocena"] for g in oceny),
             "srednia": srednia,
+            "srednia_procentowa": srednia_procentowa(oceny),
             "najnowsza_ocena": najnowsza,
             "sa_nowe_oceny": any(g["jest_nowa"] for g in oceny),
         }
@@ -624,17 +577,19 @@ class LibrusSredniaOcenSensor(CoordinatorEntity, SensorEntity):
             for oceny in data.get("oceny_wg_przedmiotu", {}).values()
             for g in oceny
         ]
-        return _srednia_ocen(wszystkie)
+        return srednia_wazona(wszystkie)
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         data = self.coordinator.data or {}
         srednie_przedmiotow = {
-            subject: _srednia_ocen(oceny)
+            subject: srednia_wazona(oceny)
             for subject, oceny in data.get("oceny_wg_przedmiotu", {}).items()
-            if _srednia_ocen(oceny) is not None
+            if srednia_wazona(oceny) is not None
         }
+        wszystkie = [g for oceny in data.get("oceny_wg_przedmiotu", {}).values() for g in oceny]
         return {
+            "srednia_procentowa": srednia_procentowa(wszystkie),
             "srednie_wg_przedmiotow": srednie_przedmiotow,
             "semestr": data.get("semestr_biezacy"),
         }
@@ -668,13 +623,14 @@ class LibrusSredniaPrzedmiotuSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> Optional[float]:
         oceny = (self.coordinator.data or {}).get("oceny_wg_przedmiotu", {}).get(self._subject, [])
-        return _srednia_ocen(oceny)
+        return srednia_wazona(oceny)
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         oceny = (self.coordinator.data or {}).get("oceny_wg_przedmiotu", {}).get(self._subject, [])
         return {
             "przedmiot": self._subject,
+            "srednia_procentowa": srednia_procentowa(oceny),
             "lista_ocen": ", ".join(g["ocena"] for g in oceny),
             "liczba_ocen": len(oceny),
         }
