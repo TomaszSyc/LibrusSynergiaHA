@@ -115,3 +115,60 @@ def test_naglowek_w_td_pierwszy_wiersz_bez_thead():
     )
     uwagi, flaga = parsuj_uwagi(html)
     assert flaga is False and [u["tresc"] for u in uwagi] == ["Pomoc kolegom"]
+
+
+# --- zachowanie ---
+
+from custom_components.librus_apix.uwagi import parsuj_zachowanie, pobierz_zachowanie  # noqa: E402
+
+_PUSTA = {"ocena": None, "propozycja": False}
+
+
+def test_zachowanie_pusty():
+    w = parsuj_zachowanie(_wczytaj("zachowanie_pusty.html"))
+    assert w == {"okres_1": _PUSTA, "okres_2": _PUSTA, "roczna": _PUSTA, "wpisy": []}
+
+
+def test_zachowanie_okres1_wpisy():
+    w = parsuj_zachowanie(_wczytaj("zachowanie_okres1.html"))
+    assert w["okres_1"] == _PUSTA and w["roczna"] == _PUSTA
+    assert w["wpisy"] == [
+        {"okres": 1, "ocena": "nb", "rodzaj": "negatywne", "data": "2025-03-10",
+         "nauczyciel": "Kowalski Jan", "komentarz": "Rozmowa podczas lekcji"},
+        {"okres": 1, "ocena": "pb", "rodzaj": "pozytywne", "data": "2025-03-12",
+         "nauczyciel": "Kowalski Jan", "komentarz": "Pomoc przy organizacji wycieczki"},
+    ]
+
+
+def test_zachowanie_propozycja():
+    w = parsuj_zachowanie(_wczytaj("zachowanie_propozycja.html"))
+    assert w["okres_1"] == {"ocena": "bardzo dobre", "propozycja": True}
+    assert w["okres_2"] == _PUSTA
+    assert w["roczna"] == _PUSTA
+
+
+def test_zachowanie_pelny():
+    w = parsuj_zachowanie(_wczytaj("zachowanie_pelny.html"))
+    assert w["okres_1"] == {"ocena": "dobre", "propozycja": False}
+    assert w["roczna"] == {"ocena": "bardzo dobre", "propozycja": False}
+    assert [(x["okres"], x["rodzaj"]) for x in w["wpisy"]] == [
+        (1, "negatywne"), (1, "pozytywne"), (2, "neutralne")]
+    assert w["wpisy"][2]["komentarz"] == ""
+
+
+def test_zachowanie_brak_wiersza():
+    w = parsuj_zachowanie(_wczytaj("zachowanie_brak_wiersza.html"))
+    assert w == {"okres_1": _PUSTA, "okres_2": _PUSTA, "roczna": _PUSTA, "wpisy": []}
+
+
+def test_zachowanie_brak_dostepu():
+    with pytest.raises(TokenError):
+        parsuj_zachowanie(_wczytaj("uwagi_brak_dostepu.html"))
+
+
+def test_pobierz_zachowanie():
+    client = MagicMock()
+    client.post.return_value.text = _wczytaj("zachowanie_pelny.html")
+    assert pobierz_zachowanie(client)["roczna"]["ocena"] == "bardzo dobre"
+    client.post.assert_called_once_with(
+        client.GRADES_URL, data={"zmiany_logowanie_wszystkie": "1"})
