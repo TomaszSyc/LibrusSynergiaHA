@@ -60,11 +60,14 @@ def _z_naglowkiem(tabela: Tag) -> list[dict[str, str]]:
     naglowki: list[str | None] = []
     start = 0
     for i, wiersz in enumerate(wiersze):
+        # naglowek: wiersz w <thead> albo pierwszy <tr> tabeli (komorki th lub td)
+        if wiersz.find_parent("thead") is None and i != 0:
+            continue
         komorki = wiersz.find_all(["th", "td"], recursive=False)
         klucze = [_klucz_kolumny(_tekst(k)) for k in komorki]
-        if sum(1 for k in klucze if k) >= 2 and not wiersz.find("td"):
+        if sum(1 for k in klucze if k) >= 2:
             naglowki, start = klucze, i + 1
-            break
+        break
     if not naglowki:
         return []
     wynik = []

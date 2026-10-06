@@ -96,3 +96,22 @@ def test_pobierz_uwagi():
     assert pobierz_uwagi(client) == ([], False)
     client.get.assert_called_once_with(UWAGI_URL)
     assert UWAGI_URL == "https://synergia.librus.pl/uwagi"
+
+
+def test_naglowek_w_td_w_thead():
+    uwagi, flaga = parsuj_uwagi(_wczytaj("uwagi_thead_td.html"))
+    assert flaga is False
+    assert len(uwagi) == 1
+    assert uwagi[0]["data"] == "2025-03-01"
+    assert uwagi[0]["nauczyciel"] == "Jan Kowalski"
+    assert uwagi[0]["kategoria"] == "Pozytywna"
+    assert uwagi[0]["tresc"] == "Pomoc kolegom"
+
+
+def test_naglowek_w_td_pierwszy_wiersz_bez_thead():
+    html = (
+        '<table class="decorated"><tr><td>Data</td><td>Treść</td></tr>'
+        "<tr><td>2025-03-01</td><td>Pomoc kolegom</td></tr></table>"
+    )
+    uwagi, flaga = parsuj_uwagi(html)
+    assert flaga is False and [u["tresc"] for u in uwagi] == ["Pomoc kolegom"]
