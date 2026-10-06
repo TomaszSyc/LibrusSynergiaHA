@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -63,7 +63,9 @@ async def async_setup_entry(
     ]
 
     # Tworz czujniki per przedmiot na podstawie pierwszego pobrania danych
+    znane: set[str] = set()
     for subject in coordinator.data.get("oceny_wg_przedmiotu", {}).keys():
+        znane.add(subject)
         entities.append(LibrusPrzedmiotSensor(coordinator, subject, config_entry))
         entities.append(LibrusSredniaPrzedmiotuSensor(coordinator, subject, config_entry))
 
@@ -71,6 +73,21 @@ async def async_setup_entry(
     entities.append(LibrusSredniaOcenSensor(coordinator, config_entry))
 
     async_add_entities(entities)
+
+    @callback
+    def _dodaj_nowe_przedmioty() -> None:
+        """Dodaj czujniki dla przedmiotow, ktore pojawily sie po starcie."""
+        nowe: List[SensorEntity] = []
+        for subject in (coordinator.data or {}).get("oceny_wg_przedmiotu", {}):
+            if subject in znane:
+                continue
+            znane.add(subject)
+            nowe.append(LibrusPrzedmiotSensor(coordinator, subject, config_entry))
+            nowe.append(LibrusSredniaPrzedmiotuSensor(coordinator, subject, config_entry))
+        if nowe:
+            async_add_entities(nowe)
+
+    config_entry.async_on_unload(coordinator.async_add_listener(_dodaj_nowe_przedmioty))
 
 
 EVENT_NOWA_WIADOMOSC = f"{DOMAIN}_nowa_wiadomosc"

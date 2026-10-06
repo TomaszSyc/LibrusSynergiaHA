@@ -186,3 +186,58 @@ async def test_klient_oznacza_poprawe_i_semestr():
     assert [x["superseded"] for x in grades] == [True, False]
     assert [x["improvement"] for x in grades] == [False, True]
     assert grades[0]["weight"] == 3 and grades[0]["scale"] == "1-6"
+
+
+def _ocena_api(przedmiot, ocena="5"):
+    return {
+        "subject": przedmiot,
+        "grade": ocena,
+        "date": "10.03.2025",
+        "category": "Sprawdzian",
+        "teacher": "Jan Kowalski",
+        "weight": 1,
+        "semester": 1,
+    }
+
+
+async def test_nowy_przedmiot_dodaje_encje(hass, mock_client):
+    """Nowy przedmiot w danych dodaje encje bez przeladowania wpisu."""
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from custom_components.librus_apix.const import DOMAIN
+
+    mock_client.biezacy_semestr = 1
+    mock_client.async_get_student_information.return_value = None
+    mock_client.async_get_grades.return_value = [_ocena_api("Fizyka")]
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"username": "u", "password": "p"},
+        entry_id="entry_x",
+    )
+    entry.add_to_hass(hass)
+    with patch("custom_components.librus_apix.LibrusApiClient", return_value=mock_client):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        registry = er.async_get(hass)
+        sred = lambda n: registry.async_get_entity_id("sensor", DOMAIN, f"entry_x_srednia_{n}")
+        przed = lambda n: registry.async_get_entity_id("sensor", DOMAIN, f"entry_x_przedmiot_{n}")
+        assert sred("fizyka") and przed("fizyka")
+        assert sred("chemia") is None
+
+        coordinator = mock_client.coordinator
+        nowe = dict(coordinator.data)
+        nowe["oceny_wg_przedmiotu"] = {
+            **coordinator.data["oceny_wg_przedmiotu"],
+            "Chemia": [{"ocena": "4", "data": "11.03.2025", "kategoria": "Kartkowka",
+                        "nauczyciel": "Jan Kowalski", "semestr": 1, "waga": 1, "jest_nowa": False}],
+        }
+        coordinator.async_set_updated_data(nowe)
+        await hass.async_block_till_done()
+        assert sred("chemia") and przed("chemia")
+        assert hass.states.get(sred("chemia")) is not None
+        liczba = len(hass.states.async_entity_ids("sensor"))
+
+        coordinator.async_set_updated_data(dict(nowe))
+        await hass.async_block_till_done()
+        assert len(hass.states.async_entity_ids("sensor")) == liczba
