@@ -30,18 +30,19 @@ async def test_brak_dostepu_do_ocen(klient):
     with patch(
         "librus_apix.student_information.get_student_information",
         return_value=SimpleNamespace(),
-    ), patch(
+    ) as kanarek, patch(
         "librus_apix.grades.get_grades", side_effect=TokenError("x")
     ) as grades:
-        assert await c.async_get_student_information() is not None
         assert await c.async_get_grades() == []
         assert "oceny" in c._brak_dostepu
+        kanarek.assert_called_once()
         wywolania = grades.call_count
         logowania = fake.get_token.call_count
 
         assert await c.async_get_grades() == []
         assert grades.call_count == wywolania
         assert fake.get_token.call_count == logowania
+        kanarek.assert_called_once()
 
 
 async def test_wygasly_token_to_nie_brak_dostepu(klient):
@@ -49,19 +50,22 @@ async def test_wygasly_token_to_nie_brak_dostepu(klient):
     with patch(
         "librus_apix.student_information.get_student_information",
         return_value=SimpleNamespace(),
-    ), patch(
+    ) as kanarek, patch(
         "librus_apix.grades.get_grades",
         side_effect=[TokenError("x"), _oceny()],
     ):
-        await c.async_get_student_information()
         assert await c.async_get_grades() == []
         assert c._brak_dostepu == {}
+        kanarek.assert_not_called()
 
 
-async def test_brak_sukcesu_innego_modulu_nie_blokuje(klient):
-    """Gdy żaden moduł nie zadziałał, TokenError to nadal błąd (None)."""
+async def test_awaria_librusa_nie_blokuje(klient):
+    """Zapytanie kontrolne tez zawodzi - to awaria, nie brak dostepu."""
     c, _ = klient
-    with patch("librus_apix.grades.get_grades", side_effect=TokenError("x")):
+    with patch(
+        "librus_apix.student_information.get_student_information",
+        side_effect=TokenError("x"),
+    ), patch("librus_apix.grades.get_grades", side_effect=TokenError("x")):
         assert await c.async_get_grades() is None
         assert c._brak_dostepu == {}
 

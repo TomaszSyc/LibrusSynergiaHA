@@ -60,33 +60,32 @@ class LibrusApiClient:
         self._client: Client = None
         self._token = None
         self._auth_lock = asyncio.Lock()
-        self._czas_logowania: datetime | None = None
-        self._poprzednie_logowanie: datetime | None = None
-        self._czas_sukcesu: datetime | None = None
         self._brak_dostepu: Dict[str, datetime] = {}
-
-    def _zaznacz_sukces(self) -> None:
-        """Zapamietaj chwile ostatniego udanego pobrania dowolnego modulu."""
-        self._czas_sukcesu = dt_util.utcnow()
 
     def _modul_zablokowany(self, modul: str) -> bool:
         """True, jesli konto nie ma dostepu do modulu (wpis mlodszy niz 24 h)."""
         od = self._brak_dostepu.get(modul)
         return od is not None and dt_util.utcnow() - od < BRAK_DOSTEPU_CZAS
 
-    def _po_drugim_token_error(self, modul: str) -> bool:
+    async def _po_drugim_token_error(self, modul: str) -> bool:
         """Rozpoznaj brak dostepu do modulu po drugim TokenError z rzedu.
 
         librus-apix rzuca ten sam TokenError dla wygaslego tokenu i dla strony
-        z komunikatem "Brak dostepu". Swiezo zalogowana sesja, w ktorej inny
-        modul dzialal, a ten nadal zawodzi, oznacza brak dostepu do modulu.
+        z komunikatem "Brak dostepu". Zapytanie kontrolne (dane ucznia) na
+        swiezej sesji rozstrzyga: jesli przechodzi, token jest dobry, a modul
+        niedostepny dla konta. Zwraca True, gdy modul zablokowano na 24 h.
         """
-        odniesienie = self._poprzednie_logowanie or self._czas_logowania
-        if (
-            self._czas_sukcesu is None
-            or odniesienie is None
-            or self._czas_sukcesu < odniesienie
-        ):
+        try:
+            if not self._client or not self._token:
+                if not await self.async_authenticate():
+                    return False
+            from librus_apix.student_information import get_student_information
+
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None, get_student_information, self._client
+            )
+        except Exception:
             return False
         self._brak_dostepu[modul] = dt_util.utcnow()
         _LOGGER.info(
@@ -108,8 +107,6 @@ class LibrusApiClient:
                 self._token = await loop.run_in_executor(
                     None, self._client.get_token, self.username, self.password
                 )
-                self._poprzednie_logowanie = self._czas_logowania
-                self._czas_logowania = dt_util.utcnow()
                 _LOGGER.debug("Authentication successful for %s", self.username)
                 return True
             except Exception as ex:
@@ -232,7 +229,6 @@ class LibrusApiClient:
                                     'type': 'descriptive'
                                 })
 
-                self._zaznacz_sukces()
                 return all_grades
 
             except TokenError as ex:
@@ -242,7 +238,7 @@ class LibrusApiClient:
                 )
                 self._reset_auth()
                 if attempt == 1:
-                    if self._po_drugim_token_error("oceny"):
+                    if await self._po_drugim_token_error("oceny"):
                         return []
                     _LOGGER.error("Failed to get grades after re-authentication.")
                     return None
@@ -295,7 +291,6 @@ class LibrusApiClient:
                     
                     result.append(msg_dict)
 
-                self._zaznacz_sukces()
                 return result
 
             except TokenError as ex:
@@ -305,7 +300,7 @@ class LibrusApiClient:
                 )
                 self._reset_auth()
                 if attempt == 1:
-                    if self._po_drugim_token_error("wiadomosci"):
+                    if await self._po_drugim_token_error("wiadomosci"):
                         return []
                     _LOGGER.error("Failed to get messages after re-authentication.")
                     return None
@@ -336,11 +331,9 @@ class LibrusApiClient:
                 date_to = (today + timedelta(days=30)).strftime("%Y-%m-%d")
 
                 loop = asyncio.get_running_loop()
-                wynik = await loop.run_in_executor(
+                return await loop.run_in_executor(
                     None, get_homework, self._client, date_from, date_to
                 )
-                self._zaznacz_sukces()
-                return wynik
 
             except TokenError:
                 _LOGGER.debug(
@@ -349,7 +342,7 @@ class LibrusApiClient:
                 )
                 self._reset_auth()
                 if attempt == 1:
-                    if self._po_drugim_token_error("zadania"):
+                    if await self._po_drugim_token_error("zadania"):
                         return []
                     _LOGGER.error("Failed to get homework after re-authentication.")
                     return None
@@ -418,9 +411,7 @@ class LibrusApiClient:
                                 })
                     return sorted(events, key=lambda e: e["data"])
 
-                wynik = await loop.run_in_executor(None, _fetch_two_months)
-                self._zaznacz_sukces()
-                return wynik
+                return await loop.run_in_executor(None, _fetch_two_months)
 
             except TokenError:
                 _LOGGER.debug(
@@ -429,7 +420,7 @@ class LibrusApiClient:
                 )
                 self._reset_auth()
                 if attempt == 1:
-                    if self._po_drugim_token_error("terminarz"):
+                    if await self._po_drugim_token_error("terminarz"):
                         return []
                     _LOGGER.error("Failed to get schedule after re-authentication.")
                     return None
@@ -749,7 +740,6 @@ class LibrusApiClient:
                 for dt in touched:
                     by_date[dt]["lekcje"].sort(key=lambda x: (x.get("godzina_od") or "99:99"))
 
-                self._zaznacz_sukces()
                 return result
 
             except TokenError:
@@ -759,7 +749,7 @@ class LibrusApiClient:
                 )
                 self._reset_auth()
                 if attempt == 1:
-                    if self._po_drugim_token_error("plan"):
+                    if await self._po_drugim_token_error("plan"):
                         return []
                     _LOGGER.error("Failed to get timetable after re-authentication.")
                     return None
@@ -786,9 +776,7 @@ class LibrusApiClient:
                 from librus_apix.student_information import get_student_information
 
                 loop = asyncio.get_running_loop()
-                wynik = await loop.run_in_executor(None, get_student_information, self._client)
-                self._zaznacz_sukces()
-                return wynik
+                return await loop.run_in_executor(None, get_student_information, self._client)
 
             except TokenError:
                 _LOGGER.debug(
@@ -834,13 +822,12 @@ class LibrusApiClient:
                                 "nauczyciel": getattr(a, "teacher", ""),
                                 "godzina": getattr(a, "period", 0)
                             })
-                self._zaznacz_sukces()
                 return result
             except TokenError:
                 _LOGGER.debug("Token expired fetching attendance (attempt %d/2), re-authenticating...", attempt + 1)
                 self._reset_auth()
                 if attempt == 1:
-                    if self._po_drugim_token_error("frekwencja"):
+                    if await self._po_drugim_token_error("frekwencja"):
                         return []
                     return None
             except Exception as ex:
@@ -874,13 +861,12 @@ class LibrusApiClient:
                             "opis": getattr(a, "description", ""),
                             "data": getattr(a, "date", "")
                         })
-                self._zaznacz_sukces()
                 return result
             except TokenError:
                 _LOGGER.debug("Token expired fetching announcements (attempt %d/2), re-authenticating...", attempt + 1)
                 self._reset_auth()
                 if attempt == 1:
-                    if self._po_drugim_token_error("ogloszenia"):
+                    if await self._po_drugim_token_error("ogloszenia"):
                         return []
                     return None
             except Exception as ex:
