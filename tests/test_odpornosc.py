@@ -22,7 +22,7 @@ def klient():
 
 
 def _oceny():
-    return ([], [], [])
+    return ([{}, {}], {}, [{}, {}])
 
 
 async def test_brak_dostepu_do_ocen(klient):
