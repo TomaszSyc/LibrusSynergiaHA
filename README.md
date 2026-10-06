@@ -21,18 +21,18 @@ Integracja tworzy następujące sensory:
 
 | Sensor | Opis | Wartość |
 |--------|------|---------|
-| `sensor.librus_uczen` | Informacje o uczniu (klasa, wychowawca, szkoła) | imię i nazwisko |
-| `sensor.librus_szczesliwy_numerek` | Szczęśliwy numerek dnia | numer |
-| `sensor.librus_oceny` | Wszystkie oceny bieżącego semestru | liczba ocen |
-| `sensor.librus_srednia_ocen` | **Globalna średnia** ze wszystkich przedmiotów | float (wykres 📈) |
-| `sensor.librus_wiadomosci` | Ostatnie 5 wiadomości z pełną treścią | liczba nieprzeczytanych |
-| `sensor.librus_<przedmiot>` | Oceny z danego przedmiotu (np. `sensor.librus_matematyka`) | lista ocen: "4, 3+, 5" |
-| `sensor.librus_srednia_<przedmiot>` | **Średnia** z danego przedmiotu (np. `sensor.librus_srednia_matematyka`) | float (wykres 📈) |
-| `sensor.librus_plan_lekcji` | Plan lekcji na pełne 7 dni z rozbiciem na dni tygodnia | - |
-| `sensor.librus_frekwencja` | Lista nieobecności i spóźnień | liczba nieobecności |
-| `sensor.librus_ogloszenia` | Najnowsze ogłoszenia | liczba ogłoszeń |
-| `sensor.uwagi` | Uwagi i pochwały ucznia | liczba wpisów |
-| `sensor.zachowanie` | Ocena zachowania (roczna, w razie braku z II lub I okresu) | ocena słowna |
+| `sensor.librus_<uczen>_informacje_o_uczniu` | Informacje o uczniu (klasa, wychowawca, szkoła) | imię i nazwisko |
+| `sensor.librus_<uczen>_szczesliwy_numerek` | Szczęśliwy numerek dnia | numer |
+| `sensor.librus_<uczen>_oceny` | Wszystkie oceny bieżącego semestru | liczba ocen |
+| `sensor.librus_<uczen>_srednia_ocen` | **Globalna średnia** ze wszystkich przedmiotów | float (wykres 📈) |
+| `sensor.librus_<uczen>_wiadomosci` | Ostatnie wiadomości z treścią (liczbę ustawia opcja, domyślnie 10, 1-50) | liczba nieprzeczytanych |
+| `sensor.librus_<uczen>_<przedmiot>` | Oceny z danego przedmiotu (np. `sensor.librus_imie_nazwisko_matematyka`) | lista ocen: "4, 3+, 5" |
+| `sensor.librus_<uczen>_srednia_<przedmiot>` | **Średnia** z danego przedmiotu (np. `sensor.librus_imie_nazwisko_srednia_matematyka`) | float (wykres 📈) |
+| `sensor.librus_<uczen>_plan_lekcji` | Plan lekcji na pełne 7 dni z rozbiciem na dni tygodnia | - |
+| `sensor.librus_<uczen>_frekwencja` | Lista nieobecności i spóźnień | liczba nieobecności |
+| `sensor.librus_<uczen>_ogloszenia` | Najnowsze ogłoszenia | liczba ogłoszeń |
+| `sensor.librus_<uczen>_uwagi` | Uwagi i pochwały ucznia | liczba wpisów |
+| `sensor.librus_<uczen>_zachowanie` | Ocena zachowania (roczna, w razie braku z II lub I okresu) | ocena słowna |
 | `calendar.*_calendar_timetable` | Wbudowany kalendarz lekcji ucznia | wydarzenia |
 | `calendar.*_calendar_schedule` | Wbudowany kalendarz sprawdzianów i wydarzeń | wydarzenia |
 | `todo.*_todo_homework` | Systemowa lista zadań domowych z terminami oddania | lista zadań |
@@ -86,8 +86,6 @@ Po dodaniu integracji kliknij **Konfiguruj**, aby ustawić:
 - **Liczba wiadomości** (1-50, domyślnie 10) - ile ostatnich wiadomości pobierać i udostępniać w atrybutach sensora wiadomości. Im więcej wiadomości (zwłaszcza z treścią), tym większe atrybuty.
 
 ### ⚠️ Ważne: Optymalizacja bazy danych (Recorder)
-Sensory z dużymi atrybutami (wiadomości z treścią, plan lekcji, terminarz, ogłoszenia) warto wykluczyć z recordera, tym bardziej przy większej liczbie wiadomości.
-
 Niektóre sensory tej integracji (np. plan lekcji, wiadomości, terminarz) przechowują w atrybutach potężne struktury JSON. Ze względu na ograniczenia architektury Home Assistanta, częste zapisywanie stanu tych sensorów powoduje drastyczne powiększanie się rozmiaru bazy danych. **Zaleca się stanowczo** wykluczenie tych ciężkich sensorów z zapisu do historii, dodając poniższy kod do pliku `configuration.yaml`:
 
 ```yaml
@@ -100,6 +98,8 @@ recorder:
       - sensor.librus_*_zadania
       - sensor.librus_*_ogloszenia
       - sensor.librus_*_oceny
+      - sensor.librus_*_uwagi
+      - sensor.librus_*_zachowanie
 ```
 ## 📊 Przykładowe karty Lovelace
 
@@ -401,9 +401,9 @@ severity:
 
 ### Uwagi i zachowanie
 
-`sensor.uwagi` — stan to liczba uwag. Atrybuty: `uwagi` (lista z polami `data`, `nauczyciel`, `rodzaj`, `kategoria`, `tresc`, `id`), `pozytywne`, `negatywne` (liczone z pola `rodzaj`), `nierozpoznany_uklad` (`true`, gdy strona uwag ma nieznany układ i nic nie udało się odczytać).
+`sensor.librus_<uczen>_uwagi` — stan to liczba uwag. Atrybuty: `uwagi` (lista z polami `data`, `nauczyciel`, `rodzaj`, `kategoria`, `tresc`, `id`), `pozytywne`, `negatywne` (liczone z pola `rodzaj`), `nierozpoznany_uklad` (`true`, gdy strona uwag ma nieznany układ i nic nie udało się odczytać).
 
-`sensor.zachowanie` — stan to ocena roczna, a gdy jej nie ma, ocena z II, potem z I okresu. Atrybuty: `okres_1`, `okres_2`, `roczna` (każdy z polami `ocena` i `propozycja`), `wpisy`, `wpisy_pozytywne`, `wpisy_negatywne`.
+`sensor.librus_<uczen>_zachowanie` — stan to ocena roczna, a gdy jej nie ma, ocena z II, potem z I okresu. Atrybuty: `okres_1`, `okres_2`, `roczna` (każdy z polami `ocena` i `propozycja`), `wpisy`, `wpisy_pozytywne`, `wpisy_negatywne`.
 
 Zdarzenia (pierwsze odświeżenie po starcie niczego nie wysyła):
 
