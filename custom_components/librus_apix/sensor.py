@@ -14,7 +14,7 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
-from .const import DOMAIN, SCAN_INTERVAL
+from .const import CONF_LICZBA_WIADOMOSCI, DEFAULT_MESSAGES_COUNT, DOMAIN, SCAN_INTERVAL
 from .oceny import srednia_procentowa, srednia_wazona
 
 _LOGGER = logging.getLogger(__name__)
@@ -119,7 +119,11 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             student_info = await self.client.async_get_student_information()
             grades = await self.client.async_get_grades()
-            messages = await self.client.async_get_messages(count=10)
+            messages = await self.client.async_get_messages(
+                count=self.client.options.get(
+                    CONF_LICZBA_WIADOMOSCI, DEFAULT_MESSAGES_COUNT
+                )
+            )
             homework_raw = await self.client.async_get_homework()
             schedule_raw = await self.client.async_get_schedule()
             plan_lekcji_raw = await self.client.async_get_timetable()
@@ -745,7 +749,10 @@ class LibrusWiadomosciSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        msgs = (self.coordinator.data or {}).get("wiadomosci", [])[:5]
+        limit = self.coordinator.client.options.get(
+            CONF_LICZBA_WIADOMOSCI, DEFAULT_MESSAGES_COUNT
+        )
+        msgs = (self.coordinator.data or {}).get("wiadomosci", [])[:limit]
         
         # Przygotuj liste wiadomosci
         wiadomosci_list = [

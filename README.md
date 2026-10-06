@@ -76,7 +76,16 @@ Lub ręcznie:
    - **Hasło**: Twoje hasło do Librus
 4. Kliknij **"Prześlij"**
 
+### Opcje
+
+Po dodaniu integracji kliknij **Konfiguruj**, aby ustawić:
+
+- **Pobieraj pełną treść wiadomości** - treść trafia do atrybutów sensora (oznacza wiadomości jako przeczytane w Librusie).
+- **Liczba wiadomości** (1-50, domyślnie 10) - ile ostatnich wiadomości pobierać i udostępniać w atrybutach sensora wiadomości. Im więcej wiadomości (zwłaszcza z treścią), tym większe atrybuty.
+
 ### ⚠️ Ważne: Optymalizacja bazy danych (Recorder)
+Sensory z dużymi atrybutami (wiadomości z treścią, plan lekcji, terminarz, ogłoszenia) warto wykluczyć z recordera, tym bardziej przy większej liczbie wiadomości.
+
 Niektóre sensory tej integracji (np. plan lekcji, wiadomości, terminarz) przechowują w atrybutach potężne struktury JSON. Ze względu na ograniczenia architektury Home Assistanta, częste zapisywanie stanu tych sensorów powoduje drastyczne powiększanie się rozmiaru bazy danych. **Zaleca się stanowczo** wykluczenie tych ciężkich sensorów z zapisu do historii, dodając poniższy kod do pliku `configuration.yaml`:
 
 ```yaml

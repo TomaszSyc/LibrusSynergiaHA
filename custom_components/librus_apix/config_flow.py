@@ -10,7 +10,7 @@ from homeassistant.data_entry_flow import FlowResult
 
 from librus_apix.client import new_client
 
-from .const import DOMAIN
+from .const import CONF_LICZBA_WIADOMOSCI, DEFAULT_MESSAGES_COUNT, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -101,6 +101,12 @@ class LibrusApixOptionsFlowHandler(config_entries.OptionsFlow):
                     "fetch_messages_content",
                     default=self.entry.options.get("fetch_messages_content", False),
                 ): bool,
+                vol.Optional(
+                    CONF_LICZBA_WIADOMOSCI,
+                    default=self.entry.options.get(
+                        CONF_LICZBA_WIADOMOSCI, DEFAULT_MESSAGES_COUNT
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=50)),
             }
         )
 

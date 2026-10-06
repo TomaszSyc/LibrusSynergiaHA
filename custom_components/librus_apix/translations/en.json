@@ -24,7 +24,8 @@
         "title": "Librus APIX Settings",
         "description": "Configure additional options for the integration.",
         "data": {
-          "fetch_messages_content": "Fetch full message content (Marks them as read in Librus system!)"
+          "fetch_messages_content": "Fetch full message content (Marks them as read in Librus system!)",
+          "liczba_wiadomosci": "Number of messages"
         }
       }
     }
