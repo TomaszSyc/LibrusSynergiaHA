@@ -132,7 +132,7 @@ def parsuj_uwagi(html: str) -> tuple[list[dict[str, Any]], bool]:
         n = wystapienia.get(krotka, 0)
         wystapienia[krotka] = n + 1
         surowe = "|".join(krotka) + f"|{n}"
-        uwaga["id"] = hashlib.md5(surowe.encode("utf-8")).hexdigest()[:12]
+        uwaga["id"] = hashlib.md5(surowe.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
 
     # od najnowszej; nieparsowalne daty na koncu, kolejnosc stabilna
     daty = [_parsuj_date(u["data"]) for u in uwagi]
@@ -146,6 +146,16 @@ def parsuj_uwagi(html: str) -> tuple[list[dict[str, Any]], bool]:
 def pobierz_uwagi(client: Any) -> tuple[list[dict[str, Any]], bool]:
     """Pobierz i sparsuj strone uwag (blokujace - wolac w executorze)."""
     return parsuj_uwagi(client.get(UWAGI_URL).text)
+
+
+def puste_zachowanie() -> dict[str, Any]:
+    """Pusta struktura zachowania (modul niedostepny dla konta)."""
+    return {
+        "okres_1": {"ocena": None, "propozycja": False},
+        "okres_2": {"ocena": None, "propozycja": False},
+        "roczna": {"ocena": None, "propozycja": False},
+        "wpisy": [],
+    }
 
 
 def _ocena_lub_none(tekst: str) -> str | None:
@@ -165,9 +175,16 @@ def _wpisy_zachowania(komorka: Tag, okres: int) -> list[dict[str, Any]]:
             rodzaj = "neutralne"
         pola: dict[str, str] = {}
         # BeautifulSoup zamienia <br> w "\n" tylko przez separator get_text
+        ostatni = None
         for czesc in BeautifulSoup(a.get("title", ""), "lxml").get_text("\n").split("\n"):
-            klucz, _, wartosc = czesc.partition(":")
-            pola[_norm(klucz)] = wartosc.strip()
+            klucz, dwukropek, wartosc = czesc.partition(":")
+            if not dwukropek:
+                # kolejna linia wieloliniowej wartosci (np. komentarza)
+                if ostatni and czesc.strip():
+                    pola[ostatni] = f"{pola[ostatni]} {czesc.strip()}".strip()
+                continue
+            ostatni = _norm(klucz)
+            pola[ostatni] = wartosc.strip()
         data = pola.get("data wystawienia", "")
         wynik.append({
             "okres": okres,

@@ -24,3 +24,9 @@ def test_waga_zero_i_dzielenie_przez_zero():
     assert srednia_wazona([s("4", 0), s("2", None)]) == 3.0
     assert procent_oceny("1/0") is None
     assert skala_oceny("1/0") is None
+
+
+def test_srednia_wazona_litery_i_plusy():
+    assert srednia_wazona([s("B+"), s("A")]) == 4.75
+    assert wartosc_oceny("6+") == 6.5
+    assert wartosc_oceny("1-") == 0.75

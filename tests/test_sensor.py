@@ -233,6 +233,46 @@ async def test_klient_oznacza_poprawe_i_semestr():
     assert grades[0]["weight"] == 3 and grades[0]["scale"] == "1-6"
 
 
+@pytest.mark.asyncio
+async def test_licz_do_sredniej_z_opisu():
+    from types import SimpleNamespace as NS
+    from custom_components.librus_apix.__init__ import LibrusApiClient
+
+    def g(grade, desc, counts):
+        return NS(grade=grade, counts=counts, date="2025-10-01", href="x", desc=desc,
+                  semester=2, category="Sprawdzian", teacher="Anna Nowak", weight=1)
+
+    numeric = [{}, {"Fizyka": [
+        g("4", "Kategoria: Sprawdzian", False),
+        g("3", "Licz do średniej: tak", True),
+        g("2", "Licz do średniej: nie", False),
+    ]}]
+    client = LibrusApiClient("u", "p")
+    client._client = MagicMock()
+    client._token = "t"
+    with patch("librus_apix.grades.get_grades", return_value=(numeric, {}, [{}, {}])):
+        grades = await client.async_get_grades()
+    assert [x["counts"] for x in grades] == [True, True, False]
+
+
+@pytest.mark.parametrize("rodzaj", ["Pochwała", "pochwala", "Pozytywna"])
+def test_pochwala_jest_pozytywna(rodzaj):
+    from custom_components.librus_apix.sensor import _licz_rodzaj, POZYTYWNE, NEGATYWNE
+    wpisy = [{"rodzaj": rodzaj}, {"rodzaj": "Nagana"}, {"rodzaj": "Negatywna"}]
+    assert _licz_rodzaj(wpisy, POZYTYWNE) == 1
+    assert _licz_rodzaj(wpisy, NEGATYWNE) == 2
+
+
+@pytest.mark.asyncio
+async def test_zablokowany_modul_uwag_daje_puste_dane(coordinator, mock_client):
+    mock_client.async_get_grades.return_value = []
+    mock_client.async_get_uwagi.return_value = ([], False)
+    coordinator.data = None
+    wynik = await coordinator._async_update_data()
+    assert wynik["uwagi"] == []
+    assert wynik["uwagi_nierozpoznane"] is False
+
+
 def _ocena_api(przedmiot, ocena="5"):
     return {
         "subject": przedmiot,

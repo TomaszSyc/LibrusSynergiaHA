@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .const import CONF_LICZBA_WIADOMOSCI, DEFAULT_MESSAGES_COUNT, DOMAIN, SCAN_INTERVAL
+from .uwagi import _norm, puste_zachowanie as _puste_zachowanie
 from .oceny import srednia_procentowa, srednia_wazona
 
 _LOGGER = logging.getLogger(__name__)
@@ -98,15 +99,6 @@ EVENT_NOWE_ZADANIE = f"{DOMAIN}_nowe_zadanie"
 EVENT_NOWE_ZDARZENIE = f"{DOMAIN}_nowe_zdarzenie"
 EVENT_NOWA_UWAGA = f"{DOMAIN}_nowa_uwaga"
 EVENT_NOWY_WPIS_ZACHOWANIA = f"{DOMAIN}_nowy_wpis_zachowania"
-
-
-def _puste_zachowanie() -> Dict[str, Any]:
-    return {
-        "okres_1": {"ocena": None, "propozycja": False},
-        "okres_2": {"ocena": None, "propozycja": False},
-        "roczna": {"ocena": None, "propozycja": False},
-        "wpisy": [],
-    }
 
 
 def _wpis_zachowania_id(wpis: Dict[str, Any]) -> tuple:
@@ -996,8 +988,13 @@ class LibrusOgloszeniaSensor(CoordinatorEntity, SensorEntity):
 
 
 
-def _licz_rodzaj(elementy: List[Dict[str, Any]], fragment: str) -> int:
-    return sum(1 for e in elementy if fragment in (e.get("rodzaj") or "").lower())
+POZYTYWNE = ("pozytyw", "pochwa")
+NEGATYWNE = ("negatyw", "nagan")
+
+
+def _licz_rodzaj(elementy: List[Dict[str, Any]], wzorce: tuple) -> int:
+    """Liczy wpisy, ktorych rodzaj (bez wielkosci liter i ogonkow) zawiera wzorzec."""
+    return sum(1 for e in elementy if any(w in _norm(e.get("rodzaj") or "") for w in wzorce))
 
 
 class LibrusUwagiSensor(CoordinatorEntity, SensorEntity):
@@ -1026,8 +1023,8 @@ class LibrusUwagiSensor(CoordinatorEntity, SensorEntity):
         uwagi = data.get("uwagi", [])
         return {
             "uwagi": uwagi,
-            "pozytywne": _licz_rodzaj(uwagi, "pozytyw"),
-            "negatywne": _licz_rodzaj(uwagi, "negatyw"),
+            "pozytywne": _licz_rodzaj(uwagi, POZYTYWNE),
+            "negatywne": _licz_rodzaj(uwagi, NEGATYWNE),
             "nierozpoznany_uklad": data.get("uwagi_nierozpoznane", False),
         }
 
@@ -1069,6 +1066,6 @@ class LibrusZachowanieSensor(CoordinatorEntity, SensorEntity):
             "okres_2": zachowanie.get("okres_2"),
             "roczna": zachowanie.get("roczna"),
             "wpisy": wpisy,
-            "wpisy_pozytywne": _licz_rodzaj(wpisy, "pozytyw"),
-            "wpisy_negatywne": _licz_rodzaj(wpisy, "negatyw"),
+            "wpisy_pozytywne": _licz_rodzaj(wpisy, POZYTYWNE),
+            "wpisy_negatywne": _licz_rodzaj(wpisy, NEGATYWNE),
         }

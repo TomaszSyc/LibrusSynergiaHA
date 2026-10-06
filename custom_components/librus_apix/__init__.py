@@ -18,6 +18,7 @@ from librus_apix.client import Client, new_client
 from librus_apix.exceptions import TokenError
 
 from .const import DOMAIN, SCAN_INTERVAL
+from .uwagi import puste_zachowanie as _puste_zachowanie
 from .oceny import biezacy_semestr, oznacz_zastapione, skala_oceny
 
 BRAK_DOSTEPU_CZAS = timedelta(hours=24)
@@ -38,16 +39,6 @@ CONFIG_SCHEMA = vol.Schema(
     },
     extra=vol.ALLOW_EXTRA,
 )
-
-
-def _puste_zachowanie() -> Dict[str, Any]:
-    """Pusta struktura zachowania (modul niedostepny dla konta)."""
-    return {
-        "okres_1": {"ocena": None, "propozycja": False},
-        "okres_2": {"ocena": None, "propozycja": False},
-        "roczna": {"ocena": None, "propozycja": False},
-        "wpisy": [],
-    }
 
 
 class LibrusApiClient:
@@ -76,6 +67,9 @@ class LibrusApiClient:
         z komunikatem "Brak dostepu". Zapytanie kontrolne (dane ucznia) na
         swiezej sesji rozstrzyga: jesli przechodzi, token jest dobry, a modul
         niedostepny dla konta. Zwraca True, gdy modul zablokowano na 24 h.
+
+        Po udanym zapytaniu kontrolnym kazdy kolejny TokenError modulu jest
+        traktowany jako brak dostepu na 24 h; reset przez przeladowanie wpisu.
         """
         try:
             if not self._client or not self._token:
@@ -179,7 +173,7 @@ class LibrusApiClient:
                                 'komentarz': komentarz_str,
                                 'type': 'numeric',
                                 'weight': getattr(grade, 'weight', 1),
-                                'counts': getattr(grade, 'counts', True),
+                                'counts': getattr(grade, 'counts', True) or "Licz do średniej" not in (getattr(grade, 'desc', '') or ''),
                                 'improvement': "Poprawa oceny" in (getattr(grade, 'desc', '') or ''),
                                 'superseded': False,
                                 'scale': skala_oceny(grade.grade),

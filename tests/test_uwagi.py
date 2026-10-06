@@ -172,3 +172,17 @@ def test_pobierz_zachowanie():
     assert pobierz_zachowanie(client)["roczna"]["ocena"] == "bardzo dobre"
     client.post.assert_called_once_with(
         client.GRADES_URL, data={"zmiany_logowanie_wszystkie": "1"})
+
+
+def test_zachowanie_wieloliniowy_komentarz():
+    html = (
+        '<table class="decorated stretch"><tbody><tr class="bolded line1"><td></td>'
+        '<td>Zachowanie</td><td colspan="2"><span class="grade-box positive-behaviour">'
+        '<a href="/x" title="Data wystawienia: 2025-03-12<br>Dodał: Kowalski Jan'
+        '<br>Komentarz: Pomoc przy wycieczce<br>oraz przy projekcie">pb</a></span></td>'
+        '<td class="center">dobre</td><td colspan="2"></td><td class="center" colspan="3">'
+        "dobre</td></tr></tbody></table>"
+    )
+    w = parsuj_zachowanie(html)
+    assert w["wpisy"][0]["komentarz"] == "Pomoc przy wycieczce oraz przy projekcie"
+    assert w["wpisy"][0]["nauczyciel"] == "Kowalski Jan"
