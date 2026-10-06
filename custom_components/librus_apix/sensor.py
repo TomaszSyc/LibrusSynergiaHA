@@ -60,6 +60,8 @@ async def async_setup_entry(
         LibrusPlanLekcjiSensor(coordinator, config_entry),
         LibrusFrekwencjaSensor(coordinator, config_entry),
         LibrusOgloszeniaSensor(coordinator, config_entry),
+        LibrusUwagiSensor(coordinator, config_entry),
+        LibrusZachowanieSensor(coordinator, config_entry),
     ]
 
     # Tworz czujniki per przedmiot na podstawie pierwszego pobrania danych
@@ -94,6 +96,24 @@ EVENT_NOWA_WIADOMOSC = f"{DOMAIN}_nowa_wiadomosc"
 EVENT_NOWA_OCENA = f"{DOMAIN}_nowa_ocena"
 EVENT_NOWE_ZADANIE = f"{DOMAIN}_nowe_zadanie"
 EVENT_NOWE_ZDARZENIE = f"{DOMAIN}_nowe_zdarzenie"
+EVENT_NOWA_UWAGA = f"{DOMAIN}_nowa_uwaga"
+EVENT_NOWY_WPIS_ZACHOWANIA = f"{DOMAIN}_nowy_wpis_zachowania"
+
+
+def _puste_zachowanie() -> Dict[str, Any]:
+    return {
+        "okres_1": {"ocena": None, "propozycja": False},
+        "okres_2": {"ocena": None, "propozycja": False},
+        "roczna": {"ocena": None, "propozycja": False},
+        "wpisy": [],
+    }
+
+
+def _wpis_zachowania_id(wpis: Dict[str, Any]) -> tuple:
+    return (
+        wpis.get("okres"), wpis.get("data"), wpis.get("nauczyciel"),
+        wpis.get("ocena"), wpis.get("komentarz"),
+    )
 
 
 class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
@@ -106,6 +126,8 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
         self._seen_grade_ids: set = set()
         self._seen_homework_ids: set = set()
         self._seen_schedule_ids: set = set()
+        self._seen_uwagi_ids: set = set()
+        self._seen_wpisy_zachowania_ids: set = set()
         self._first_run: bool = True
         super().__init__(
             hass,
@@ -129,6 +151,8 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
             plan_lekcji_raw = await self.client.async_get_timetable()
             frekwencja_raw = await self.client.async_get_attendance()
             ogloszenia_raw = await self.client.async_get_announcements()
+            uwagi_raw = await self.client.async_get_uwagi()
+            zachowanie_raw = await self.client.async_get_zachowanie()
 
             prev = self.data or {}
 
@@ -182,6 +206,17 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
             plan_lekcji = plan_lekcji_raw if plan_lekcji_raw is not None else prev.get("plan_lekcji", [])
             frekwencja = frekwencja_raw if frekwencja_raw is not None else prev.get("frekwencja", [])
             ogloszenia = ogloszenia_raw if ogloszenia_raw is not None else prev.get("ogloszenia", [])
+
+            if uwagi_raw is not None:
+                uwagi, uwagi_nierozpoznane = uwagi_raw
+            else:
+                uwagi = prev.get("uwagi", [])
+                uwagi_nierozpoznane = prev.get("uwagi_nierozpoznane", False)
+            zachowanie = (
+                zachowanie_raw
+                if zachowanie_raw is not None
+                else prev.get("zachowanie") or _puste_zachowanie()
+            )
 
             # Fuzja: Zdarzenia z terminarza -> plan lekcji (dodanie pola zdarzenie)
             if plan_lekcji and terminarz:
@@ -271,6 +306,9 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                 "plan_lekcji": plan_lekcji,
                 "frekwencja": frekwencja,
                 "ogloszenia": ogloszenia,
+                "uwagi": uwagi,
+                "uwagi_nierozpoznane": uwagi_nierozpoznane,
+                "zachowanie": zachowanie,
                 "semestr_biezacy": getattr(self.client, "biezacy_semestr", 1),
             }
 
@@ -291,11 +329,17 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                     self._seen_schedule_ids.add(
                         (zdarzenie["data"], zdarzenie["tytul"], zdarzenie["przedmiot"])
                     )
+                for uwaga in uwagi:
+                    self._seen_uwagi_ids.add(uwaga.get("id"))
+                for wpis in zachowanie.get("wpisy", []):
+                    self._seen_wpisy_zachowania_ids.add(_wpis_zachowania_id(wpis))
             else:
                 uczen = getattr(student_info, "name", "Nieznany uczeń") if student_info else "Nieznany uczeń"
                 self._fire_events(wiadomosci, grades, uczen)
                 self._fire_homework_events(zadania, uczen)
                 self._fire_schedule_events(terminarz, uczen)
+                self._fire_uwagi_events(uwagi)
+                self._fire_zachowanie_events(zachowanie)
 
             return result
 
@@ -356,6 +400,35 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                         "godzina": zdarzenie["godzina"],
                     },
                 )
+
+    def _fire_uwagi_events(self, uwagi: List[Dict]) -> None:
+        """Wyslij zdarzenia HA dla nowych uwag."""
+        for uwaga in uwagi:
+            uwaga_id = uwaga.get("id")
+            if uwaga_id in self._seen_uwagi_ids:
+                continue
+            self._seen_uwagi_ids.add(uwaga_id)
+            _LOGGER.debug("Nowa uwaga: %s", uwaga.get("data"))
+            self.hass.bus.fire(
+                EVENT_NOWA_UWAGA,
+                {k: uwaga.get(k, "") for k in ("data", "nauczyciel", "rodzaj", "kategoria", "tresc")},
+            )
+
+    def _fire_zachowanie_events(self, zachowanie: Dict[str, Any]) -> None:
+        """Wyslij zdarzenia HA dla nowych wpisow o zachowaniu."""
+        for wpis in zachowanie.get("wpisy", []):
+            wpis_id = _wpis_zachowania_id(wpis)
+            if wpis_id in self._seen_wpisy_zachowania_ids:
+                continue
+            self._seen_wpisy_zachowania_ids.add(wpis_id)
+            _LOGGER.debug("Nowy wpis zachowania: %s", wpis.get("data"))
+            self.hass.bus.fire(
+                EVENT_NOWY_WPIS_ZACHOWANIA,
+                {
+                    k: wpis.get(k, "")
+                    for k in ("okres", "ocena", "rodzaj", "data", "nauczyciel", "komentarz")
+                },
+            )
 
     def _build_wiadomosci(self, messages: Optional[List[Dict]]) -> List[Dict]:
         """Oznacz nowe wiadomosci i zwroc liste."""
@@ -921,3 +994,81 @@ class LibrusOgloszeniaSensor(CoordinatorEntity, SensorEntity):
             "lista_ogloszen": ogloszenia,
         }
 
+
+
+def _licz_rodzaj(elementy: List[Dict[str, Any]], fragment: str) -> int:
+    return sum(1 for e in elementy if fragment in (e.get("rodzaj") or "").lower())
+
+
+class LibrusUwagiSensor(CoordinatorEntity, SensorEntity):
+    """Czujnik uwag i pochwal."""
+
+    def __init__(self, coordinator: LibrusDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._config_entry = config_entry
+        self._attr_has_entity_name = False
+        self._attr_name = "Uwagi"
+        self._attr_unique_id = f"{config_entry.entry_id}_uwagi"
+        self._attr_icon = "mdi:note-alert-outline"
+
+    @property
+    def device_info(self) -> Dict[str, Any]:
+        return _device_info(self.coordinator, self._config_entry)
+
+    @property
+    def native_value(self) -> int:
+        data = self.coordinator.data or {}
+        return len(data.get("uwagi", []))
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        data = self.coordinator.data or {}
+        uwagi = data.get("uwagi", [])
+        return {
+            "uwagi": uwagi,
+            "pozytywne": _licz_rodzaj(uwagi, "pozytyw"),
+            "negatywne": _licz_rodzaj(uwagi, "negatyw"),
+            "nierozpoznany_uklad": data.get("uwagi_nierozpoznane", False),
+        }
+
+
+class LibrusZachowanieSensor(CoordinatorEntity, SensorEntity):
+    """Czujnik ocen zachowania."""
+
+    def __init__(self, coordinator: LibrusDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._config_entry = config_entry
+        self._attr_has_entity_name = False
+        self._attr_name = "Zachowanie"
+        self._attr_unique_id = f"{config_entry.entry_id}_zachowanie"
+        self._attr_icon = "mdi:account-star"
+
+    @property
+    def device_info(self) -> Dict[str, Any]:
+        return _device_info(self.coordinator, self._config_entry)
+
+    def _zachowanie(self) -> Dict[str, Any]:
+        data = self.coordinator.data or {}
+        return data.get("zachowanie") or _puste_zachowanie()
+
+    @property
+    def native_value(self) -> Optional[str]:
+        zachowanie = self._zachowanie()
+        for klucz in ("roczna", "okres_2", "okres_1"):
+            ocena = (zachowanie.get(klucz) or {}).get("ocena")
+            if ocena is not None:
+                return ocena
+        return None
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        zachowanie = self._zachowanie()
+        wpisy = zachowanie.get("wpisy", [])
+        return {
+            "okres_1": zachowanie.get("okres_1"),
+            "okres_2": zachowanie.get("okres_2"),
+            "roczna": zachowanie.get("roczna"),
+            "wpisy": wpisy,
+            "wpisy_pozytywne": _licz_rodzaj(wpisy, "pozytyw"),
+            "wpisy_negatywne": _licz_rodzaj(wpisy, "negatyw"),
+        }

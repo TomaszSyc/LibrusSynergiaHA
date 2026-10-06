@@ -885,6 +885,51 @@ class LibrusApiClient:
                     return None
 
 
+    async def async_get_uwagi(self):
+        """Get remarks from Librus."""
+        for attempt in range(2):
+            try:
+                if not self._client or not self._token:
+                    if not await self.async_authenticate():
+                        return None
+
+                from .uwagi import pobierz_uwagi
+                loop = asyncio.get_running_loop()
+                return await loop.run_in_executor(None, pobierz_uwagi, self._client)
+            except TokenError:
+                _LOGGER.debug("Token expired fetching remarks (attempt %d/2), re-authenticating...", attempt + 1)
+                self._reset_auth()
+                if attempt == 1:
+                    return None
+            except Exception as ex:
+                _LOGGER.error("Failed to get remarks (attempt %d/2): %s", attempt + 1, ex)
+                self._reset_auth()
+                if attempt == 1:
+                    return None
+
+    async def async_get_zachowanie(self):
+        """Get behaviour from Librus."""
+        for attempt in range(2):
+            try:
+                if not self._client or not self._token:
+                    if not await self.async_authenticate():
+                        return None
+
+                from .uwagi import pobierz_zachowanie
+                loop = asyncio.get_running_loop()
+                return await loop.run_in_executor(None, pobierz_zachowanie, self._client)
+            except TokenError:
+                _LOGGER.debug("Token expired fetching behaviour (attempt %d/2), re-authenticating...", attempt + 1)
+                self._reset_auth()
+                if attempt == 1:
+                    return None
+            except Exception as ex:
+                _LOGGER.error("Failed to get behaviour (attempt %d/2): %s", attempt + 1, ex)
+                self._reset_auth()
+                if attempt == 1:
+                    return None
+
+
 async def async_setup(hass: HomeAssistant, config: Dict[str, Any]) -> bool:
     """Set up the Librus APIX component."""
     hass.data.setdefault(DOMAIN, {})

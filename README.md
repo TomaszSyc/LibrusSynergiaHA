@@ -31,6 +31,8 @@ Integracja tworzy następujące sensory:
 | `sensor.librus_plan_lekcji` | Plan lekcji na pełne 7 dni z rozbiciem na dni tygodnia | - |
 | `sensor.librus_frekwencja` | Lista nieobecności i spóźnień | liczba nieobecności |
 | `sensor.librus_ogloszenia` | Najnowsze ogłoszenia | liczba ogłoszeń |
+| `sensor.uwagi` | Uwagi i pochwały ucznia | liczba wpisów |
+| `sensor.zachowanie` | Ocena zachowania (roczna, w razie braku z II lub I okresu) | ocena słowna |
 | `calendar.*_calendar_timetable` | Wbudowany kalendarz lekcji ucznia | wydarzenia |
 | `calendar.*_calendar_schedule` | Wbudowany kalendarz sprawdzianów i wydarzeń | wydarzenia |
 | `todo.*_todo_homework` | Systemowa lista zadań domowych z terminami oddania | lista zadań |
@@ -395,6 +397,32 @@ severity:
   green: 4.5
   yellow: 3
   red: 0
+```
+
+### Uwagi i zachowanie
+
+`sensor.uwagi` — stan to liczba uwag. Atrybuty: `uwagi` (lista z polami `data`, `nauczyciel`, `rodzaj`, `kategoria`, `tresc`, `id`), `pozytywne`, `negatywne` (liczone z pola `rodzaj`), `nierozpoznany_uklad` (`true`, gdy strona uwag ma nieznany układ i nic nie udało się odczytać).
+
+`sensor.zachowanie` — stan to ocena roczna, a gdy jej nie ma, ocena z II, potem z I okresu. Atrybuty: `okres_1`, `okres_2`, `roczna` (każdy z polami `ocena` i `propozycja`), `wpisy`, `wpisy_pozytywne`, `wpisy_negatywne`.
+
+Zdarzenia (pierwsze odświeżenie po starcie niczego nie wysyła):
+
+- `librus_apix_nowa_uwaga` — dane: `data`, `nauczyciel`, `rodzaj`, `kategoria`, `tresc`
+- `librus_apix_nowy_wpis_zachowania` — dane: `okres`, `ocena`, `rodzaj`, `data`, `nauczyciel`, `komentarz`
+
+```yaml
+automation:
+  - alias: "Librus - nowa uwaga"
+    trigger:
+      platform: event
+      event_type: librus_apix_nowa_uwaga
+    action:
+      - service: notify.mobile_app_NAZWA_TWOJEGO_TELEFONU
+        data:
+          title: "Nowa uwaga ({{ trigger.event.data.rodzaj }})"
+          message: >-
+            {{ trigger.event.data.nauczyciel }}, {{ trigger.event.data.data }}:
+            {{ trigger.event.data.tresc }}
 ```
 
 ## 🔔 Automatyzacje powiadomień na telefon
