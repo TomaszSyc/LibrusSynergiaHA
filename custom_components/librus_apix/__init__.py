@@ -40,6 +40,16 @@ CONFIG_SCHEMA = vol.Schema(
 )
 
 
+def _puste_zachowanie() -> Dict[str, Any]:
+    """Pusta struktura zachowania (modul niedostepny dla konta)."""
+    return {
+        "okres_1": {"ocena": None, "propozycja": False},
+        "okres_2": {"ocena": None, "propozycja": False},
+        "roczna": {"ocena": None, "propozycja": False},
+        "wpisy": [],
+    }
+
+
 class LibrusApiClient:
     """Class to interface with the Librus API."""
 
@@ -887,6 +897,8 @@ class LibrusApiClient:
 
     async def async_get_uwagi(self):
         """Get remarks from Librus."""
+        if self._modul_zablokowany("uwagi"):
+            return ([], False)
         for attempt in range(2):
             try:
                 if not self._client or not self._token:
@@ -900,6 +912,8 @@ class LibrusApiClient:
                 _LOGGER.debug("Token expired fetching remarks (attempt %d/2), re-authenticating...", attempt + 1)
                 self._reset_auth()
                 if attempt == 1:
+                    if await self._po_drugim_token_error("uwagi"):
+                        return ([], False)
                     return None
             except Exception as ex:
                 _LOGGER.error("Failed to get remarks (attempt %d/2): %s", attempt + 1, ex)
@@ -909,6 +923,8 @@ class LibrusApiClient:
 
     async def async_get_zachowanie(self):
         """Get behaviour from Librus."""
+        if self._modul_zablokowany("zachowanie"):
+            return _puste_zachowanie()
         for attempt in range(2):
             try:
                 if not self._client or not self._token:
@@ -922,6 +938,8 @@ class LibrusApiClient:
                 _LOGGER.debug("Token expired fetching behaviour (attempt %d/2), re-authenticating...", attempt + 1)
                 self._reset_auth()
                 if attempt == 1:
+                    if await self._po_drugim_token_error("zachowanie"):
+                        return _puste_zachowanie()
                     return None
             except Exception as ex:
                 _LOGGER.error("Failed to get behaviour (attempt %d/2): %s", attempt + 1, ex)
