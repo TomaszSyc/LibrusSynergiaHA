@@ -8,6 +8,7 @@ from custom_components.librus_apix.__init__ import LibrusApiClient
 @pytest.fixture
 def mock_client():
     client = MagicMock(spec=LibrusApiClient)
+    client.options = {}
     client.async_authenticate = AsyncMock(return_value=True)
     client.async_get_student_information = AsyncMock()
     client.async_get_grades = AsyncMock()
@@ -72,3 +73,39 @@ async def test_student_info_getattr_fix(coordinator, mock_client):
     
     assert result["student_info"].name == "Piotr Nowak"
     # To potwierdza ze wywolania getattr(student_info, 'name') wewnatrz integracji nie zglosza AttributeError
+
+
+@pytest.mark.asyncio
+async def test_wiadomosci_wg_opcji(hass, coordinator, mock_client):
+    """Opcja liczby wiadomosci trafia do klienta i do atrybutu sensora."""
+    from custom_components.librus_apix.sensor import LibrusWiadomosciSensor
+
+    mock_client.options = {"liczba_wiadomosci": 7}
+    mock_client.async_get_grades.return_value = []
+    student_info = MagicMock()
+    student_info.name = "Jan Kowalski"
+    mock_client.async_get_student_information.return_value = student_info
+    mock_client.async_get_messages.return_value = [
+        {"author": f"Autor {i}", "title": f"Temat {i}", "date": "2026-01-01", "href": f"/w/{i}"}
+        for i in range(9)
+    ]
+    coordinator.data = None
+
+    coordinator.data = await coordinator._async_update_data()
+
+    mock_client.async_get_messages.assert_awaited_once_with(count=7)
+    entry = MagicMock()
+    entry.entry_id = "test_123"
+    attrs = LibrusWiadomosciSensor(coordinator, entry).extra_state_attributes
+    assert len(attrs["wiadomosci"]) == 7
+    assert attrs["wiadomosci"][6]["temat"] == "Temat 6"
+
+
+@pytest.mark.asyncio
+async def test_wiadomosci_domyslna_liczba(hass, coordinator, mock_client):
+    """Bez opcji pobieramy 10 wiadomosci."""
+    mock_client.async_get_grades.return_value = []
+    mock_client.async_get_student_information.return_value = MagicMock()
+    coordinator.data = None
+    await coordinator._async_update_data()
+    mock_client.async_get_messages.assert_awaited_once_with(count=10)

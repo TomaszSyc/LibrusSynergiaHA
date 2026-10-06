@@ -8,6 +8,7 @@ DEFAULT_NAME = "Librus"
 # Configuration keys
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
+CONF_LICZBA_WIADOMOSCI = "liczba_wiadomosci"
 
 # Update intervals
 SCAN_INTERVAL = timedelta(hours=2)
