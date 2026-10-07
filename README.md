@@ -34,7 +34,7 @@ Integracja tworzy następujące sensory:
 | `sensor.librus_<uczen>_nieobecnosci_usprawiedliwione` | Nieobecności usprawiedliwione w bieżącym semestrze | liczba, np. 5 |
 | `sensor.librus_<uczen>_spoznienia` | Spóźnienia w bieżącym semestrze | liczba, np. 1 |
 | `sensor.librus_<uczen>_zwolnienia` | Zwolnienia w bieżącym semestrze | liczba, np. 0 |
-| `sensor.librus_<uczen>_tematy_lekcji` | **Tematy zrealizowanych lekcji** z ostatnich 7 dni wraz z wpisem frekwencji przy każdej lekcji (np. `nb` tylko na 1. lekcji) i zastępcą, jeśli lekcja była zastępstwem | liczba lekcji dzisiaj |
+| `sensor.librus_<uczen>_tematy_lekcji` | **Tematy zrealizowanych lekcji** z ostatnich 7 dni wraz z wpisem frekwencji przy każdej lekcji (np. `nb` tylko na 1. lekcji) i zastępcą, jeśli lekcja była zastępstwem; wyłączony sensor nie pobiera strony z Librusa | liczba lekcji dzisiaj |
 | `sensor.librus_<uczen>_ogloszenia` | Najnowsze ogłoszenia | liczba ogłoszeń |
 | `sensor.librus_<uczen>_uwagi` | Uwagi i pochwały ucznia | liczba wpisów |
 | `sensor.librus_<uczen>_zachowanie` | Ocena zachowania (roczna, w razie braku z II lub I okresu) | ocena słowna |

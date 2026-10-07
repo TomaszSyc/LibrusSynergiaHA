@@ -627,3 +627,45 @@ async def test_nowe_sensory_rejestruja_entity_id(hass, mock_client):
                   "spoznienia", "zwolnienia", "plan_lekcji"):
             eid = reg.async_get_entity_id("sensor", DOMAIN, f"entry_y_{k}")
             assert eid
+
+
+_LEKCJA = {"data": "2025-10-01", "numer": 1, "przedmiot": "Fizyka", "temat": "Ruch jednostajny", "obecnosc": "ob"}
+
+
+@pytest.mark.asyncio
+async def test_tematy_nie_pobierane_bez_sensora(coordinator, mock_client):
+    mock_client.async_get_student_information.return_value = None
+    mock_client.async_get_grades.return_value = []
+    coordinator.data = {"tematy_lekcji": [_LEKCJA]}
+    result = await coordinator._async_update_data()
+    mock_client.async_get_completed_lessons.assert_not_awaited()
+    assert result["tematy_lekcji"] == [_LEKCJA]
+
+
+@pytest.mark.asyncio
+async def test_tematy_pobierane_z_wlaczonym_sensorem(coordinator, mock_client):
+    mock_client.async_get_student_information.return_value = None
+    mock_client.async_get_grades.return_value = []
+    mock_client.async_get_completed_lessons.return_value = [_LEKCJA]
+    coordinator.tematy_wlaczone = True
+    result = await coordinator._async_update_data()
+    mock_client.async_get_completed_lessons.assert_awaited_once()
+    assert result["tematy_lekcji"] == [_LEKCJA]
+
+
+@pytest.mark.asyncio
+async def test_sensor_tematow_wlacza_pobieranie(hass, coordinator, mock_client):
+    from custom_components.librus_apix.sensor import LibrusTematyLekcjiSensor
+    mock_client.async_get_completed_lessons.return_value = [_LEKCJA]
+    coordinator.data = {"oceny": []}
+    s = LibrusTematyLekcjiSensor(coordinator, _entry())
+    s.hass = hass
+    s.entity_id = "sensor.librus_jan_tematy_lekcji"
+    await s.async_added_to_hass()
+    await hass.async_block_till_done()
+    assert coordinator.tematy_wlaczone is True
+    mock_client.async_get_completed_lessons.assert_awaited_once()
+    assert coordinator.data["tematy_lekcji"] == [_LEKCJA]
+    assert coordinator.data["oceny"] == []
+    await s.async_will_remove_from_hass()
+    assert coordinator.tematy_wlaczone is False

@@ -154,12 +154,20 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
         self._seen_uwagi_ids: set = set()
         self._seen_wpisy_zachowania_ids: set = set()
         self._first_run: bool = True
+        # Tematy lekcji pobieramy tylko, gdy ich sensor jest wlaczony (ustawia go sam sensor)
+        self.tematy_wlaczone: bool = False
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
             update_interval=SCAN_INTERVAL,
         )
+
+    async def async_odswiez_tematy(self) -> None:
+        """Pobierz same tematy lekcji (pierwsze odswiezenie odbywa sie przed dodaniem sensora)."""
+        tematy = await self.client.async_get_completed_lessons()
+        if tematy is not None and self.data is not None:
+            self.async_set_updated_data({**self.data, "tematy_lekcji": tematy})
 
     async def _async_update_data(self) -> Dict[str, Any]:
         """Pobierz aktualne dane z API Librus."""
@@ -178,7 +186,11 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
             ogloszenia_raw = await self.client.async_get_announcements()
             uwagi_raw = await self.client.async_get_uwagi()
             zachowanie_raw = await self.client.async_get_zachowanie()
-            tematy_raw = await self.client.async_get_completed_lessons()
+            tematy_raw = (
+                await self.client.async_get_completed_lessons()
+                if self.tematy_wlaczone
+                else None
+            )
             frekwencja_stat_raw = await self.client.async_get_attendance_stats()
 
             prev = self.data or {}
@@ -1080,6 +1092,15 @@ class LibrusTematyLekcjiSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = "Tematy lekcji"
         self._attr_unique_id = f"{config_entry.entry_id}_tematy_lekcji"
         self._attr_icon = "mdi:book-open-page-variant"
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.coordinator.tematy_wlaczone = True
+        self.hass.async_create_task(self.coordinator.async_odswiez_tematy())
+
+    async def async_will_remove_from_hass(self) -> None:
+        self.coordinator.tematy_wlaczone = False
+        await super().async_will_remove_from_hass()
 
     @property
     def device_info(self) -> Dict[str, Any]:
