@@ -831,7 +831,9 @@ class LibrusApiClient:
                                 "data": getattr(a, "date", ""),
                                 "przedmiot": getattr(a, "subject", ""),
                                 "nauczyciel": getattr(a, "teacher", ""),
-                                "godzina": getattr(a, "period", 0)
+                                "godzina": getattr(a, "period", 0),
+                                "semestr": getattr(a, "semester", None),
+                                "wycieczka": bool(getattr(a, "excursion", False)),
                             })
                 return result
             except TokenError:

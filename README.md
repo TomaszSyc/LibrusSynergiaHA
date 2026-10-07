@@ -29,7 +29,11 @@ Integracja tworzy następujące sensory:
 | `sensor.librus_<uczen>_<przedmiot>` | Oceny z danego przedmiotu (np. `sensor.librus_imie_nazwisko_matematyka`) | lista ocen: "4, 3+, 5" |
 | `sensor.librus_<uczen>_srednia_<przedmiot>` | **Średnia** z danego przedmiotu (np. `sensor.librus_imie_nazwisko_srednia_matematyka`) | float (wykres 📈) |
 | `sensor.librus_<uczen>_plan_lekcji` | Plan lekcji na pełne 7 dni z rozbiciem na dni tygodnia | - |
-| `sensor.librus_<uczen>_frekwencja` | Lista nieobecności i spóźnień | liczba nieobecności |
+| `sensor.librus_<uczen>_frekwencja` | Lista nieobecności i spóźnień; liczy tylko bieżący semestr (`lista_wpisow` zawiera wszystkie semestry) | liczba nieobecności (nb + u) |
+| `sensor.librus_<uczen>_nieobecnosci_nieusprawiedliwione` | Nieobecności nieusprawiedliwione w bieżącym semestrze (atrybut `wpisy`: data, przedmiot, godzina, nauczyciel) | liczba, np. 2 |
+| `sensor.librus_<uczen>_nieobecnosci_usprawiedliwione` | Nieobecności usprawiedliwione w bieżącym semestrze | liczba, np. 5 |
+| `sensor.librus_<uczen>_spoznienia` | Spóźnienia w bieżącym semestrze | liczba, np. 1 |
+| `sensor.librus_<uczen>_zwolnienia` | Zwolnienia w bieżącym semestrze | liczba, np. 0 |
 | `sensor.librus_<uczen>_ogloszenia` | Najnowsze ogłoszenia | liczba ogłoszeń |
 | `sensor.librus_<uczen>_uwagi` | Uwagi i pochwały ucznia | liczba wpisów |
 | `sensor.librus_<uczen>_zachowanie` | Ocena zachowania (roczna, w razie braku z II lub I okresu) | ocena słowna |

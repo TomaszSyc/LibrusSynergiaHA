@@ -60,6 +60,10 @@ async def async_setup_entry(
         LibrusTerminarzSensor(coordinator, config_entry),
         LibrusPlanLekcjiSensor(coordinator, config_entry),
         LibrusFrekwencjaSensor(coordinator, config_entry),
+        *[
+            LibrusLicznikFrekwencjiSensor(coordinator, config_entry, *opis)
+            for opis in _LICZNIKI_FREKWENCJI
+        ],
         LibrusOgloszeniaSensor(coordinator, config_entry),
         LibrusUwagiSensor(coordinator, config_entry),
         LibrusZachowanieSensor(coordinator, config_entry),
@@ -936,23 +940,79 @@ class LibrusFrekwencjaSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> str:
-        data = self.coordinator.data or {}
-        frekwencja = data.get("frekwencja", [])
-        nieobecnosci = sum(1 for f in frekwencja if f.get("symbol") in ["nb", "u"])
-        return str(nieobecnosci)
+        return str(len(_wpisy_symboli(self.coordinator, ("nb", "u"))))
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         data = self.coordinator.data or {}
-        frekwencja = data.get("frekwencja", [])
-        
-        spoznienia = [f for f in frekwencja if f.get("symbol") == "sp"]
-        nieobecnosci = [f for f in frekwencja if f.get("symbol") in ["nb", "u"]]
-        
         return {
-            "lista_wpisow": frekwencja,
-            "liczba_spoznien": len(spoznienia),
-            "liczba_nieobecnosci": len(nieobecnosci),
+            "lista_wpisow": data.get("frekwencja", []),
+            "liczba_spoznien": len(_wpisy_symboli(self.coordinator, ("sp",))),
+            "liczba_nieobecnosci": len(_wpisy_symboli(self.coordinator, ("nb", "u"))),
+        }
+
+
+# (symbol, nazwa, klucz unique_id, ikona)
+_LICZNIKI_FREKWENCJI = (
+    ("nb", "Nieobecnosci nieusprawiedliwione", "nieobecnosci_nieusprawiedliwione", "mdi:account-cancel"),
+    ("u", "Nieobecnosci usprawiedliwione", "nieobecnosci_usprawiedliwione", "mdi:account-check-outline"),
+    ("sp", "Spoznienia", "spoznienia", "mdi:clock-alert-outline"),
+    ("zw", "Zwolnienia", "zwolnienia", "mdi:exit-run"),
+)
+
+
+def _frekwencja_biezacego_semestru(coordinator) -> List[Dict[str, Any]]:
+    """Wpisy frekwencji z biezacego semestru (wpisy bez semestru, np. ze starego cache, zostaja)."""
+    semestr = getattr(coordinator.client, "biezacy_semestr", 1)
+    wpisy = (coordinator.data or {}).get("frekwencja") or []
+    return [w for w in wpisy if w.get("semestr") in (None, semestr)]
+
+
+def _wpisy_symboli(coordinator, symbole) -> List[Dict[str, Any]]:
+    return [w for w in _frekwencja_biezacego_semestru(coordinator) if w.get("symbol") in symbole]
+
+
+class LibrusLicznikFrekwencjiSensor(CoordinatorEntity, SensorEntity):
+    """Licznik wpisow frekwencji jednego rodzaju w biezacym semestrze."""
+
+    def __init__(
+        self,
+        coordinator: LibrusDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        symbol: str,
+        nazwa: str,
+        klucz: str,
+        ikona: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._config_entry = config_entry
+        self._symbol = symbol
+        self._attr_has_entity_name = False
+        self._attr_name = nazwa
+        self._attr_unique_id = f"{config_entry.entry_id}_{klucz}"
+        self._attr_icon = ikona
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def device_info(self) -> Dict[str, Any]:
+        return _device_info(self.coordinator, self._config_entry)
+
+    @property
+    def native_value(self) -> int:
+        return len(_wpisy_symboli(self.coordinator, (self._symbol,)))
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        wpisy = sorted(
+            _wpisy_symboli(self.coordinator, (self._symbol,)),
+            key=lambda w: str(w.get("data", "")),
+            reverse=True,
+        )
+        return {
+            "wpisy": [
+                {k: w.get(k) for k in ("data", "przedmiot", "godzina", "nauczyciel")}
+                for w in wpisy
+            ]
         }
 
 

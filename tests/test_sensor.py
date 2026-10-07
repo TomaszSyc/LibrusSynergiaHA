@@ -482,3 +482,105 @@ async def test_none_bez_cache_daje_puste(coordinator, mock_client):
     wynik = await coordinator._async_update_data()
     assert wynik["uwagi"] == []
     assert wynik["zachowanie"] == PUSTE_ZACHOWANIE
+
+
+def _fr(symbol, semestr, data="2026-02-1%d", przedmiot="Fizyka"):
+    return {"symbol": symbol, "typ": "x", "data": data, "przedmiot": przedmiot,
+            "nauczyciel": "Anna Wzorowa", "godzina": 2, "semestr": semestr, "wycieczka": False}
+
+
+def _frekwencja_dane():
+    return [
+        _fr("nb", 1, "2025-10-01"), _fr("u", 1, "2025-10-02"), _fr("sp", 1, "2025-10-03"),
+        _fr("nb", 2, "2026-02-10"), _fr("nb", 2, "2026-02-11"), _fr("u", 2, "2026-02-12"),
+        _fr("sp", 2, "2026-02-13"), _fr("zw", 2, "2026-02-14"), _fr("ns", 2, "2026-02-15"),
+        _fr("zw", 1, "2025-10-04"),
+    ]
+
+
+def _sensor_frekwencji(coordinator, mock_client, klasa, dane, semestr=2, *args):
+    mock_client.biezacy_semestr = semestr
+    coordinator.data = {"frekwencja": dane}
+    return klasa(coordinator, _entry(), *args)
+
+
+def test_nowe_sensory_licza_biezacy_semestr(coordinator, mock_client):
+    from custom_components.librus_apix import sensor as s
+    mock_client.biezacy_semestr = 2
+    coordinator.data = {"frekwencja": _frekwencja_dane()}
+    e = _entry()
+    L = s.LibrusLicznikFrekwencjiSensor
+    nb = L(coordinator, e, *s._LICZNIKI_FREKWENCJI[0])
+    u = L(coordinator, e, *s._LICZNIKI_FREKWENCJI[1])
+    sp = L(coordinator, e, *s._LICZNIKI_FREKWENCJI[2])
+    zw = L(coordinator, e, *s._LICZNIKI_FREKWENCJI[3])
+    assert (nb.native_value, u.native_value, sp.native_value, zw.native_value) == (2, 1, 1, 1)
+    assert nb.unique_id == "test_123_nieobecnosci_nieusprawiedliwione"
+    assert u.unique_id == "test_123_nieobecnosci_usprawiedliwione"
+    assert sp.unique_id == "test_123_spoznienia"
+    assert zw.unique_id == "test_123_zwolnienia"
+    assert nb.name == "Nieobecnosci nieusprawiedliwione"
+    wpisy = nb.extra_state_attributes["wpisy"]
+    assert [w["data"] for w in wpisy] == ["2026-02-11", "2026-02-10"]
+    assert set(wpisy[0]) == {"data", "przedmiot", "godzina", "nauczyciel"}
+
+
+def test_frekwencja_biezacy_semestr(coordinator, mock_client):
+    from custom_components.librus_apix.sensor import LibrusFrekwencjaSensor
+    f = _sensor_frekwencji(coordinator, mock_client, LibrusFrekwencjaSensor, _frekwencja_dane())
+    assert f.native_value == "3"
+    a = f.extra_state_attributes
+    assert a["liczba_nieobecnosci"] == 3
+    assert a["liczba_spoznien"] == 1
+    assert len(a["lista_wpisow"]) == 10
+
+
+def test_frekwencja_semestr_1_i_brak_semestru(coordinator, mock_client):
+    from custom_components.librus_apix.sensor import LibrusFrekwencjaSensor, LibrusLicznikFrekwencjiSensor, _LICZNIKI_FREKWENCJI
+    f = _sensor_frekwencji(coordinator, mock_client, LibrusFrekwencjaSensor, _frekwencja_dane(), 1)
+    assert f.native_value == "2"
+    stare = [_fr("nb", None), _fr("sp", None), _fr("nb", 2), _fr("nb", 1)]
+    f = _sensor_frekwencji(coordinator, mock_client, LibrusFrekwencjaSensor, stare, 2)
+    assert f.native_value == "2"
+    sp = _sensor_frekwencji(coordinator, mock_client, LibrusLicznikFrekwencjiSensor, stare, 2, *_LICZNIKI_FREKWENCJI[2])
+    assert sp.native_value == 1
+
+
+@pytest.mark.asyncio
+async def test_client_mapuje_semestr_i_wycieczke():
+    from custom_components.librus_apix.__init__ import LibrusApiClient
+
+    class A:
+        def __init__(self, sem, exc):
+            self.symbol, self.type, self.date = "nb", "Nieobecnosc", "2026-02-10"
+            self.subject, self.teacher, self.period = "Fizyka", "Anna Wzorowa", 3
+            self.semester = sem
+            self.excursion = exc
+
+    client = LibrusApiClient("u", "p")
+    client._client = MagicMock()
+    client._token = "t"
+    with patch("librus_apix.attendance.get_attendance", return_value=[[A(1, False)], [A(2, True)]]):
+        wynik = await client.async_get_attendance()
+    assert [(w["semestr"], w["wycieczka"]) for w in wynik] == [(1, False), (2, True)]
+
+
+@pytest.mark.asyncio
+async def test_nowe_sensory_rejestruja_entity_id(hass, mock_client):
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from custom_components.librus_apix.const import DOMAIN
+
+    mock_client.biezacy_semestr = 1
+    mock_client.async_get_student_information.return_value = None
+    mock_client.async_get_grades.return_value = []
+    entry = MockConfigEntry(domain=DOMAIN, data={"username": "u", "password": "p"}, entry_id="entry_y")
+    entry.add_to_hass(hass)
+    with patch("custom_components.librus_apix.LibrusApiClient", return_value=mock_client):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        reg = er.async_get(hass)
+        for k in ("nieobecnosci_nieusprawiedliwione", "nieobecnosci_usprawiedliwione",
+                  "spoznienia", "zwolnienia", "plan_lekcji"):
+            eid = reg.async_get_entity_id("sensor", DOMAIN, f"entry_y_{k}")
+            assert eid
