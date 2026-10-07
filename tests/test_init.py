@@ -36,6 +36,8 @@ def mock_librus_client():
     client.async_get_announcements = AsyncMock(return_value=[])
     client.async_get_uwagi = AsyncMock(return_value=([], False))
     client.async_get_zachowanie = AsyncMock(return_value=None)
+    client.async_get_completed_lessons = AsyncMock(return_value=[])
+    client.async_get_attendance_stats = AsyncMock(return_value=None)
     return client
 
 

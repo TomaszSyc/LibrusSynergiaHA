@@ -62,6 +62,8 @@ def mock_client():
     client.async_get_announcements = AsyncMock(return_value=[])
     client.async_get_uwagi = AsyncMock(return_value=([], False))
     client.async_get_zachowanie = AsyncMock(return_value=dict(PUSTE_ZACHOWANIE))
+    client.async_get_completed_lessons = AsyncMock(return_value=[])
+    client.async_get_attendance_stats = AsyncMock(return_value=None)
     return client
 
 @pytest.fixture
@@ -533,6 +535,22 @@ def test_frekwencja_biezacy_semestr(coordinator, mock_client):
     assert a["liczba_nieobecnosci"] == 3
     assert a["liczba_spoznien"] == 1
     assert len(a["lista_wpisow"]) == 10
+    assert (a["liczba_nieusprawiedliwionych"], a["liczba_usprawiedliwionych"], a["liczba_zwolnien"]) == (2, 1, 1)
+    assert a["frekwencja_procent"] is None and a["wpisy_wg_rodzaju"] == {}
+
+
+@pytest.mark.asyncio
+async def test_procent_frekwencji_z_biezacego_semestru(coordinator, mock_client):
+    mock_client.async_get_student_information.return_value = None
+    mock_client.biezacy_semestr = 2
+    mock_client.async_get_attendance_stats.return_value = [
+        ("ob", 1), ("nb", 1), ("ob", 2), ("ob", 2), ("sp", 2), ("nb", 2),
+    ]
+    result = await coordinator._async_update_data()
+    stat = result["frekwencja_stat"]
+    assert stat["procent_semestr"] == 75.0
+    assert stat["lekcji_w_semestrze"] == 4
+    assert stat["rodzaje"] == {"ob": 2, "sp": 1, "nb": 1}
 
 
 def test_frekwencja_semestr_1_i_brak_semestru(coordinator, mock_client):
