@@ -551,18 +551,43 @@ async def test_client_mapuje_semestr_i_wycieczke():
     from custom_components.librus_apix.__init__ import LibrusApiClient
 
     class A:
-        def __init__(self, sem, exc):
+        def __init__(self, sem, exc=False):
             self.symbol, self.type, self.date = "nb", "Nieobecnosc", "2026-02-10"
             self.subject, self.teacher, self.period = "Fizyka", "Anna Wzorowa", 3
             self.semester = sem
             self.excursion = exc
 
-    client = LibrusApiClient("u", "p")
-    client._client = MagicMock()
-    client._token = "t"
-    with patch("librus_apix.attendance.get_attendance", return_value=[[A(1, False)], [A(2, True)]]):
-        wynik = await client.async_get_attendance()
+    async def pobierz(dane):
+        client = LibrusApiClient("u", "p")
+        client._client = MagicMock()
+        client._token = "t"
+        with patch("librus_apix.attendance.get_attendance", return_value=dane):
+            return await client.async_get_attendance()
+
+    # dwa semestry: biblioteka odwraca liste, a.semester to licznik markerow (0/1)
+    wynik = await pobierz([[A(1, False)], [A(0, True)]])
     assert [(w["semestr"], w["wycieczka"]) for w in wynik] == [(1, False), (2, True)]
+    # jeden semestr
+    wynik = await pobierz([[A(0)], []])
+    assert [w["semestr"] for w in wynik] == [1]
+
+
+def test_wpisy_porzadek_i_normalizacja_symbolu(coordinator, mock_client):
+    from custom_components.librus_apix.sensor import LibrusLicznikFrekwencjiSensor, _LICZNIKI_FREKWENCJI
+    dane = [dict(_fr("NB ", 2, "2026-02-10"), godzina=2), dict(_fr("nb", 2, "2026-02-10"), godzina=5),
+            dict(_fr("nb", 2, "2026-02-10"), godzina=None)]
+    nb = _sensor_frekwencji(coordinator, mock_client, LibrusLicznikFrekwencjiSensor, dane, 2, *_LICZNIKI_FREKWENCJI[0])
+    assert nb.native_value == 3
+    assert [w["godzina"] for w in nb.extra_state_attributes["wpisy"]] == [5, 2, None]
+
+
+def test_brak_danych_koordynatora_daje_zera(coordinator, mock_client):
+    from custom_components.librus_apix.sensor import LibrusLicznikFrekwencjiSensor, _LICZNIKI_FREKWENCJI
+    coordinator.data = None
+    for opis in _LICZNIKI_FREKWENCJI:
+        e = LibrusLicznikFrekwencjiSensor(coordinator, _entry(), *opis)
+        assert e.native_value == 0
+        assert e.extra_state_attributes == {"wpisy": []}
 
 
 @pytest.mark.asyncio

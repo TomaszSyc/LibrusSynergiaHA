@@ -961,6 +961,13 @@ _LICZNIKI_FREKWENCJI = (
 )
 
 
+def _int(v) -> int:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _frekwencja_biezacego_semestru(coordinator) -> List[Dict[str, Any]]:
     """Wpisy frekwencji z biezacego semestru (wpisy bez semestru, np. ze starego cache, zostaja)."""
     semestr = getattr(coordinator.client, "biezacy_semestr", 1)
@@ -969,7 +976,7 @@ def _frekwencja_biezacego_semestru(coordinator) -> List[Dict[str, Any]]:
 
 
 def _wpisy_symboli(coordinator, symbole) -> List[Dict[str, Any]]:
-    return [w for w in _frekwencja_biezacego_semestru(coordinator) if w.get("symbol") in symbole]
+    return [w for w in _frekwencja_biezacego_semestru(coordinator) if str(w.get("symbol", "")).strip().lower() in symbole]
 
 
 class LibrusLicznikFrekwencjiSensor(CoordinatorEntity, SensorEntity):
@@ -1005,7 +1012,7 @@ class LibrusLicznikFrekwencjiSensor(CoordinatorEntity, SensorEntity):
     def extra_state_attributes(self) -> Dict[str, Any]:
         wpisy = sorted(
             _wpisy_symboli(self.coordinator, (self._symbol,)),
-            key=lambda w: str(w.get("data", "")),
+            key=lambda w: (str(w.get("data", "")), _int(w.get("godzina"))),
             reverse=True,
         )
         return {

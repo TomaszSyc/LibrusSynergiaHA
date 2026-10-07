@@ -823,7 +823,8 @@ class LibrusApiClient:
                 
                 result = []
                 if attendance:
-                    for sem in attendance:
+                    # Pozycja listy = semestr; a.semester to licznik markerow z biblioteki
+                    for idx, sem in enumerate(attendance, 1):
                         for a in sem:
                             result.append({
                                 "symbol": getattr(a, "symbol", ""),
@@ -832,7 +833,7 @@ class LibrusApiClient:
                                 "przedmiot": getattr(a, "subject", ""),
                                 "nauczyciel": getattr(a, "teacher", ""),
                                 "godzina": getattr(a, "period", 0),
-                                "semestr": getattr(a, "semester", None),
+                                "semestr": idx,
                                 "wycieczka": bool(getattr(a, "excursion", False)),
                             })
                 return result
