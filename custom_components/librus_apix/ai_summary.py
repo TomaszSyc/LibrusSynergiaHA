@@ -218,40 +218,114 @@ def _substitute_prompt_tags(prompt: str, coordinator_data: dict, dzisiejsza_data
     return prompt
 
 
+def _value_to_text(val) -> str:
+    """Konwertuj dowolną wartość (string, dict, list) na czytelny tekst podsumowania."""
+    if val is None:
+        return ""
+    if isinstance(val, str):
+        return val.strip()
+    if isinstance(val, list):
+        items = [_value_to_text(item) for item in val if _value_to_text(item)]
+        return "\n".join(items).strip()
+    if isinstance(val, dict):
+        # Sprawdź czy słownik zawiera dedykowany klucz z tekstem
+        for text_key in ("tekst", "tresc", "podsumowanie", "summary", "text", "opis", "odpowiedz", "message"):
+            for k, v in val.items():
+                if str(k).strip().lower() == text_key:
+                    res = _value_to_text(v)
+                    if res:
+                        return res
+        # W przeciwnym razie połącz wszystkie wartości w czytelny blok
+        parts = []
+        for k, v in val.items():
+            t = _value_to_text(v)
+            if t:
+                parts.append(f"{k}: {t}" if not str(k).isdigit() else t)
+        return "\n".join(parts).strip()
+    return str(val).strip()
+
+
 def _extract_ai_role_text(result_json: dict, role: str) -> str:
-    """Wyodrębnij tekst dla roli (rodzic lub uczen) bez względu na wielkość liter i synonimy."""
+    """Wyodrębnij tekst dla roli (rodzic lub uczen) bez względu na format kluczy i strukturę JSON."""
     if not isinstance(result_json, dict):
+        if isinstance(result_json, str) and result_json.strip():
+            return result_json.strip()
         return f"Brak danych dla {role}"
 
-    synonyms_rodzic = (
-        "rodzic", "rodzice", "parent", "parents", "dla_rodzica", "podsumowanie_rodzic", "podsumowanie_dla_rodzica"
-    )
-    synonyms_uczen = (
-        "uczen", "uczeń", "student", "pupil", "dla_ucznia", "podsumowanie_uczen", "podsumowanie_dla_ucznia"
-    )
+    if not result_json:
+        return f"Brak danych dla {role}"
 
-    target_synonyms = synonyms_rodzic if role == "rodzic" else synonyms_uczen
+    def _normalize_key(k: str) -> str:
+        s = str(k).strip().lower().replace(" ", "_").replace("-", "_").replace(".", "_")
+        return re.sub(r"_+", "_", s).strip("_")
 
-    # 1. Bezpośrednie dopasowanie klucza case-insensitive
+    is_parent = role == "rodzic"
+    keywords_rodzic = (
+        "rodzic", "rodzice", "rodzicow", "rodziców", "parent", "parents",
+        "dla_rodzica", "dla_rodzicow", "dla_rodziców", "opiekun", "opiekunowie",
+        "opiekuna", "dla_opiekuna", "dorosly", "dorosły", "mama", "tata"
+    )
+    keywords_uczen = (
+        "uczen", "uczeń", "ucznia", "uczniowie", "student", "students",
+        "pupil", "pupils", "dziecko", "dziecka", "dla_ucznia", "dla_dziecka"
+    )
+    target_keywords = keywords_rodzic if is_parent else keywords_uczen
+    role_num = "1" if is_parent else "2"
+
+    def _matches_role(norm_key: str) -> bool:
+        if norm_key in (role_num, f"krok_{role_num}", f"sekcja_{role_num}", f"czesc_{role_num}"):
+            return True
+        for kw in target_keywords:
+            if kw in norm_key:
+                return True
+        return False
+
+    # 1. Sprawdzenie bezpośrednich kluczy pasujących do danej roli
     for k, v in result_json.items():
-        if str(k).strip().lower() in target_synonyms:
-            if isinstance(v, str) and v.strip():
-                return v.strip()
-            elif isinstance(v, dict):
-                nested = _extract_ai_role_text(v, role)
-                if not nested.startswith("Brak danych"):
-                    return nested
+        norm_k = _normalize_key(k)
+        if _matches_role(norm_k):
+            if isinstance(v, dict):
+                sub = _extract_ai_role_text(v, role)
+                if sub and not sub.startswith("Brak danych"):
+                    return sub
+            txt = _value_to_text(v)
+            if txt:
+                return txt
 
-    # 2. Zagnieżdżenie pod imieniem ucznia (np. {"Wiktor": {"rodzic": "..."}})
+    # 2. Sprawdzenie czy JSON nie jest zagnieżdżony pod imieniem ucznia (np. {"Hubert": {"rodzic": ...}})
     for v in result_json.values():
         if isinstance(v, dict):
             nested = _extract_ai_role_text(v, role)
-            if not nested.startswith("Brak danych"):
+            if nested and not nested.startswith("Brak danych"):
                 return nested
 
-    # 3. Bezpośredni klucz fallback
+    # 3. Jeśli słownik ma dokładnie 2 elementy (np. ogólne sekcje ["sekcja_a", "sekcja_b"])
+    if len(result_json) == 2:
+        items = list(result_json.values())
+        idx = 0 if is_parent else 1
+        candidate = _value_to_text(items[idx])
+        if candidate:
+            return candidate
+
+    # 4. Jeśli słownik zawiera ogólne podsumowanie ("podsumowanie", "summary", "tekst", "raport")
+    for general_key in ("podsumowanie", "summary", "tekst", "text", "raport", "tresc", "odpowiedz", "wynik"):
+        for k, v in result_json.items():
+            if general_key in _normalize_key(k):
+                candidate = _value_to_text(v)
+                if candidate:
+                    return candidate
+
+    # 5. Jeśli słownik ma dokładnie 1 element
+    if len(result_json) == 1:
+        only_val = _value_to_text(list(result_json.values())[0])
+        if only_val:
+            return only_val
+
+    # 6. Bezpośredni klucz fallback (dokładna nazwa roli)
     if role in result_json:
-        return str(result_json[role])
+        txt = _value_to_text(result_json[role])
+        if txt:
+            return txt
 
     return f"Brak danych dla {role}"
 
@@ -279,9 +353,14 @@ async def async_generate_summary(hass: HomeAssistant, entry_id: str, coordinator
 Wykonaj podsumowanie tygodnia.
 
 INSTRUKCJA ZWROTU:
-Zwróć odpowiedź w formacie JSON (bez znaczników markdown typu ```json), zawierającym dwa klucze:
-1. "rodzic" - na podstawie instrukcji: {prompt_parent}
-2. "uczen" - na podstawie instrukcji: {prompt_student}
+Zwróć odpowiedź w formacie JSON (bez znaczników markdown typu ```json), zawierającym DWA klucze: "rodzic" oraz "uczen".
+Nawet jeśli uczeń nie posiada w danym okresie nowych ocen ani uwag, zawsze wygeneruj pełne podsumowanie dla rodzica w kluczu "rodzic" oraz dla ucznia w kluczu "uczen", skupiając się na frekwencji i nadchodzących sprawdzianach.
+
+Wytyczne dla klucza "rodzic":
+{prompt_parent}
+
+Wytyczne dla klucza "uczen":
+{prompt_student}
 
 Format odpowiedzi:
 {{
@@ -310,13 +389,27 @@ Format odpowiedzi:
             result_text = response.response.speech.get("plain", {}).get("speech", "")
 
         if not result_text:
-            _LOGGER.error("Pusta odpowiedź od modelu AI.")
+            _LOGGER.error("Pusta odpowiedź od modelu AI dla %s.", imie)
             return
 
+        _LOGGER.debug("AI odpowiedź surowa dla %s: %s", imie, result_text)
         result_json = _parse_ai_json_response(result_text)
+        _LOGGER.debug("AI sparsowany JSON dla %s: %s", imie, result_json)
 
         rodzic_text = _extract_ai_role_text(result_json, "rodzic")
         uczen_text = _extract_ai_role_text(result_json, "uczen")
+
+        # Fallback: jeśli nadal brak danych, a surowy tekst modelu jest czytelny
+        clean_raw = result_text.strip()
+        if (not rodzic_text or rodzic_text.startswith("Brak danych")) and clean_raw and not clean_raw.startswith("{"):
+            rodzic_text = clean_raw
+        if (not uczen_text or uczen_text.startswith("Brak danych")) and clean_raw and not clean_raw.startswith("{"):
+            uczen_text = clean_raw
+
+        if rodzic_text.startswith("Brak danych"):
+            _LOGGER.warning("Nie udało się dopasować podsumowania dla rodzica dla %s. Odpowiedź AI: %s", imie, result_text)
+        if uczen_text.startswith("Brak danych"):
+            _LOGGER.warning("Nie udało się dopasować podsumowania dla ucznia dla %s. Odpowiedź AI: %s", imie, result_text)
 
         _LOGGER.info("Pomyślnie wygenerowano podsumowanie AI dla %s", imie)
 
@@ -328,7 +421,7 @@ Format odpowiedzi:
         )
 
     except Exception as ex:
-        _LOGGER.error("Błąd podczas generowania podsumowania AI: %s", ex)
+        _LOGGER.error("Błąd podczas generowania podsumowania AI dla %s: %s", imie, ex)
         async_dispatcher_send(
             hass,
             f"librus_ai_summary_{entry_id}",
@@ -402,9 +495,13 @@ async def async_generate_messages_summary(hass: HomeAssistant, entry_id: str, co
 Wykonaj podsumowanie wiadomości. 
 
 INSTRUKCJA ZWROTU:
-Zwróć odpowiedź w formacie JSON (bez znaczników markdown), zawierającym dwa klucze:
-1. "rodzic" - na podstawie instrukcji: {prompt_parent}
-2. "uczen" - na podstawie instrukcji: {prompt_student}
+Zwróć odpowiedź w formacie JSON (bez znaczników markdown typu ```json), zawierającym DWA klucze: "rodzic" oraz "uczen".
+
+Wytyczne dla klucza "rodzic":
+{prompt_parent}
+
+Wytyczne dla klucza "uczen":
+{prompt_student}
 
 Format odpowiedzi:
 {{
@@ -428,12 +525,27 @@ Format odpowiedzi:
             result_text = response.response.speech.get("plain", {}).get("speech", "")
             
         if not result_text:
+            _LOGGER.error("Pusta odpowiedź od modelu AI dla wiadomości (%s).", imie)
             return
             
+        _LOGGER.debug("AI wiadomości odpowiedź surowa dla %s: %s", imie, result_text)
         result_json = _parse_ai_json_response(result_text)
+        _LOGGER.debug("AI wiadomości sparsowany JSON dla %s: %s", imie, result_json)
 
         rodzic_text = _extract_ai_role_text(result_json, "rodzic")
         uczen_text = _extract_ai_role_text(result_json, "uczen")
+
+        # Fallback: jeśli nadal brak danych, a surowy tekst modelu jest czytelny
+        clean_raw = result_text.strip()
+        if (not rodzic_text or rodzic_text.startswith("Brak danych")) and clean_raw and not clean_raw.startswith("{"):
+            rodzic_text = clean_raw
+        if (not uczen_text or uczen_text.startswith("Brak danych")) and clean_raw and not clean_raw.startswith("{"):
+            uczen_text = clean_raw
+
+        if rodzic_text.startswith("Brak danych"):
+            _LOGGER.warning("Nie udało się dopasować podsumowania wiadomości dla rodzica dla %s. Odpowiedź AI: %s", imie, result_text)
+        if uczen_text.startswith("Brak danych"):
+            _LOGGER.warning("Nie udało się dopasować podsumowania wiadomości dla ucznia dla %s. Odpowiedź AI: %s", imie, result_text)
 
         async_dispatcher_send(
             hass, 

@@ -93,7 +93,7 @@ def test_default_prompts_placeholders():
 
 
 def test_extract_ai_role_text():
-    """Weryfikacja odpornego wyciągania ról z JSON (case-insensitive, synonimy, zagnieżdżenia)."""
+    """Weryfikacja odpornego wyciągania ról z JSON (case-insensitive, synonimy, spacje, zagnieżdżenia, listy, fallbacki)."""
     from custom_components.librus_apix.ai_summary import _extract_ai_role_text
 
     # 1. Wielkie litery i polskie znaki
@@ -110,6 +110,48 @@ def test_extract_ai_role_text():
     data_nested = {"Wiktor": {"rodzic": "Wszystko ok", "uczen": "Dobra robota"}}
     assert _extract_ai_role_text(data_nested, "rodzic") == "Wszystko ok"
     assert _extract_ai_role_text(data_nested, "uczen") == "Dobra robota"
+
+    # 4. Klucze ze spacjami i odmianami (np. "podsumowanie dla rodzica", "dla rodziców")
+    data_spaces = {
+        "podsumowanie dla rodzica": "Hubert ma 100% frekwencji",
+        "podsumowanie dla ucznia": "Przygotuj się do sprawdzianu",
+    }
+    assert _extract_ai_role_text(data_spaces, "rodzic") == "Hubert ma 100% frekwencji"
+    assert _extract_ai_role_text(data_spaces, "uczen") == "Przygotuj się do sprawdzianu"
+
+    data_plurals = {
+        "dla rodziców": "Wiadomość do rodziców",
+        "dla ucznia": "Wiadomość do ucznia",
+    }
+    assert _extract_ai_role_text(data_plurals, "rodzic") == "Wiadomość do rodziców"
+    assert _extract_ai_role_text(data_plurals, "uczen") == "Wiadomość do ucznia"
+
+    # 5. Klucze z numerami "1" / "2" oraz "1. rodzic"
+    data_num = {"1": "Dla rodzica 1", "2": "Dla ucznia 2"}
+    assert _extract_ai_role_text(data_num, "rodzic") == "Dla rodzica 1"
+    assert _extract_ai_role_text(data_num, "uczen") == "Dla ucznia 2"
+
+    data_dots = {"1. rodzic": "Dla rodzica z kropką", "2. uczen": "Dla ucznia z kropką"}
+    assert _extract_ai_role_text(data_dots, "rodzic") == "Dla rodzica z kropką"
+    assert _extract_ai_role_text(data_dots, "uczen") == "Dla ucznia z kropką"
+
+    # 6. Wartości będące słownikami lub listami (np. podpunkty z ocenami/sprawdzianami)
+    data_dict_vals = {
+        "rodzic": {"podsumowanie": "Brak uwag w tym tygodniu", "sprawdziany": "Dwa sprawdziany"},
+        "uczen": ["Punkt 1 dla ucznia", "Punkt 2 dla ucznia"],
+    }
+    assert "Brak uwag w tym tygodniu" in _extract_ai_role_text(data_dict_vals, "rodzic")
+    assert "Punkt 1 dla ucznia\nPunkt 2 dla ucznia" in _extract_ai_role_text(data_dict_vals, "uczen")
+
+    # 7. Fallback dla pojedynczego podsumowania
+    data_single = {"podsumowanie": "Wspólne podsumowanie dla Huberta"}
+    assert _extract_ai_role_text(data_single, "rodzic") == "Wspólne podsumowanie dla Huberta"
+    assert _extract_ai_role_text(data_single, "uczen") == "Wspólne podsumowanie dla Huberta"
+
+    # 8. Fallback dla generycznych 2 sekcji
+    data_generic_two = {"czesc_a": "Sekcja rodzica", "czesc_b": "Sekcja ucznia"}
+    assert _extract_ai_role_text(data_generic_two, "rodzic") == "Sekcja rodzica"
+    assert _extract_ai_role_text(data_generic_two, "uczen") == "Sekcja ucznia"
 
 
 def test_substitute_prompt_tags_with_custom_days():
@@ -171,6 +213,51 @@ def test_substitute_prompt_tags_with_custom_days():
     prompt_short = "Sprawdziany: {sprawdziany:3}"
     out_short = _substitute_prompt_tags(prompt_short, coordinator_data, today.strftime("%Y-%m-%d"), "Wiktor")
     assert "Brak zapowiedzianych sprawdzianów" in out_short
+
+
+def test_substitute_prompt_tags_hubert_empty_grades_with_exams():
+    """Weryfikacja przypadku Huberta: brak nowych ocen i uwag, 100% frekwencji, zapowiedziane 2 sprawdziany."""
+    from datetime import date, timedelta
+    from custom_components.librus_apix.ai_summary import _substitute_prompt_tags
+    from custom_components.librus_apix.ai_prompts import DEFAULT_PROMPT_WEEKLY_PARENT
+
+    today = date.today()
+    in_2_days = (today + timedelta(days=2)).strftime("%Y-%m-%d")
+    in_3_days = (today + timedelta(days=3)).strftime("%Y-%m-%d")
+
+    coordinator_data = {
+        "oceny_wg_przedmiotu": {},
+        "terminarz": [
+            {
+                "data": in_2_days,
+                "tytul": "Sprawdzian",
+                "przedmiot": "Język polski",
+                "rodzaj": "sprawdzian",
+                "szczegoly": {"Opis": "I rozdział"},
+            },
+            {
+                "data": in_3_days,
+                "tytul": "Sprawdzian",
+                "przedmiot": "Matematyka",
+                "rodzaj": "sprawdzian",
+                "szczegoly": {"Opis": "Liczby i działania"},
+            },
+        ],
+        "zadania": [],
+        "uwagi": [],
+        "frekwencja_stat": {"procent_semestr": "100.0", "rodzaje": {}},
+    }
+
+    out = _substitute_prompt_tags(DEFAULT_PROMPT_WEEKLY_PARENT, coordinator_data, today.strftime("%Y-%m-%d"), "Hubert")
+    assert "Hubert" in out
+    assert "Brak nowych ocen w wybranym okresie" in out
+    assert "100.0%" in out
+    assert "Brak spóźnień i nieobecności" in out
+    assert "Brak uwag w wybranym okresie" in out
+    assert "Język polski: Sprawdzian" in out
+    assert "Matematyka: Sprawdzian" in out
+    assert "I rozdział" in out
+    assert "Liczby i działania" in out
 
 
 

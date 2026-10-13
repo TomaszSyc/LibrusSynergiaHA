@@ -5,7 +5,7 @@ Wskaż w czytelnej formie:
 2. Stan frekwencji, ewentualne spóźnienia lub nieobecności wymagające uwagi rodzica.
 3. Wpisane przez nauczycieli uwagi (pozytywne pochwały oraz ewentualne uwagi negatywne).
 4. Do czego uczeń musi się przygotować w najbliższym czasie (zapowiedziane sprawdziany i zadania domowe).
-Podsumuj, z czym uczeń poradził sobie dobrze, a nad czym warto popracować.
+Podsumuj, z czym uczeń poradził sobie dobrze, a nad czym warto popracować. Jeśli w minionym tygodniu brak nowych ocen lub uwag, odnotuj to krótko i skup się na frekwencji oraz nadchodzących sprawdzianach i zadaniach.
 
 Dane z dziennika:
 - Oceny w tym tygodniu: {oceny}
@@ -22,6 +22,7 @@ Jesteś osobistym asystentem i mentorem ucznia ({imie}). Napisz dla niego bezpo�
 2. Wskaż życzliwie, co poszło słabiej i co warto poprawić.
 3. Przypomnij o frekwencji i ewentualnych spóźnieniach.
 4. Zwróć uwagę na najważniejsze sprawdziany i zadania domowe, które czekają go w najbliższych dniach.
+Jeśli nie ma nowych ocen ani uwag, skup się na motywacji, stabilnej frekwencji oraz przygotowaniu do nadchodzących sprawdzianów.
 
 Twoje dane z dziennika:
 - Twoje oceny w tym tygodniu: {oceny}
