@@ -84,16 +84,45 @@ def is_exam_event(event: dict) -> bool:
     return any(x in t for x in ("sprawdzian", "kartkówka", "kartkowka", "klasówka", "klasowka", "praca klasowa", "test"))
 
 
+def _get_oauth_token(client) -> str | None:
+    """Bezpiecznie pobierz token OAuth bez wywoływania CookieConflictError."""
+    token_obj = getattr(client, "token", None)
+    if token_obj and getattr(token_obj, "oauth", None):
+        return token_obj.oauth
+    cookies = getattr(client, "cookies", None)
+    if cookies and hasattr(cookies, "__iter__"):
+        for c in cookies:
+            if getattr(c, "name", None) == "oauth_token" and c.value:
+                return c.value
+    return None
+
+
+def _set_oauth_cookie(jar, oauth_val: str) -> None:
+    """Ustaw ciasteczko oauth_token z domeną synergia.librus.pl, usuwając duplikaty."""
+    if jar is None or not hasattr(jar, "set"):
+        return
+    try:
+        to_remove = [c for c in jar if getattr(c, "name", None) == "oauth_token"]
+        for c in to_remove:
+            jar.clear(c.domain, c.path, c.name)
+    except Exception as clear_ex:
+        _LOGGER.debug("Błąd czyszczenia zduplikowanych ciasteczek oauth_token: %s", clear_ex)
+    try:
+        jar.set("oauth_token", oauth_val, domain="synergia.librus.pl", path="/")
+    except Exception as set_ex:
+        _LOGGER.debug("Błąd ustawiania ciasteczka oauth_token: %s", set_ex)
+
+
 def _ensure_oauth(client, force_refresh: bool = False) -> str | None:
-    """Zapewnij token OAuth bez nadmiarowych zapytań do /OAuth/Authorization."""
-    oauth = client.cookies.get("oauth_token") or getattr(getattr(client, "token", None), "oauth", None)
+    """Zapewnij token OAuth bez nadmiarowych zapytań ani konfliktów ciasteczek."""
+    oauth = _get_oauth_token(client)
     if oauth and not force_refresh:
-        client.cookies["oauth_token"] = oauth
+        _set_oauth_cookie(getattr(client, "cookies", None), oauth)
         return oauth
     try:
         oauth = client.refresh_oauth()
         if oauth:
-            client.cookies["oauth_token"] = oauth
+            _set_oauth_cookie(getattr(client, "cookies", None), oauth)
         return oauth
     except Exception as ex:
         _LOGGER.debug("Błąd odświeżania tokena OAuth: %s", ex)
