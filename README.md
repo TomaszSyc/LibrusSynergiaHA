@@ -148,6 +148,9 @@ Integracja pozwala na zdefiniowanie własnych instrukcji (promptów) w opcjach k
 
 Nie chcesz składać kart samodzielnie? W katalogu [`examples/dashboard`](examples/dashboard) jest gotowy panel „Szkoła” (strona główna + podwidok każdego ucznia) do wklejenia w edytorze kodu źródłowego panelu, oraz generator dla dowolnej liczby uczniów.
 
+> 🚀 **Kreator Dashboardu Online:** Możesz wygenerować spersonalizowany panel dla dowolnej liczby uczniów bez uruchamiania skryptów, bezpośrednio w przeglądarce:  
+> 👉 **[Otwórz Kreator Dashboardu Online](https://procaktomasz.github.io/LibrusSynergiaHA/)**
+
 ---
 
 ## 📊 Przykładowe karty Lovelace
