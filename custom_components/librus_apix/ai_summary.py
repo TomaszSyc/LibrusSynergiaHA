@@ -52,33 +52,118 @@ def _parse_ai_json_response(result_text: str) -> dict:
     _LOGGER.warning("AI nie zwróciło poprawnego JSONa. Używam surowego tekstu.")
     return {"rodzic": text, "uczen": text}
 
-async def async_generate_summary(hass: HomeAssistant, entry_id: str, coordinator_data: dict, agent_id: str, options: dict = None):
-    """Generate Weekly AI Summary using Home Assistant conversation API."""
-    options = options or {}
-    if not coordinator_data:
-        _LOGGER.error("Brak danych do wygenerowania podsumowania AI")
-        return
 
-    # Przygotowanie danych do promptu
-    student = coordinator_data.get("student_info")
-    imie = student.name if student else "Uczeń"
-    
-    oceny = []
-    for subject, grades in coordinator_data.get("oceny_wg_przedmiotu", {}).items():
-        nowe_oceny = [g for g in grades if g.get("jest_nowa")]
-        if nowe_oceny:
-            oceny.append(f"{subject}: " + ", ".join([f"{g['ocena']} ({g.get('kategoria','')})" for g in nowe_oceny]))
-            
-    frekwencja = coordinator_data.get("frekwencja_stat", {})
-    rodzaje_frekwencji = frekwencja.get("rodzaje", {})
-    # Filtrujemy 'Obecność', by AI nie myliło tego z nieobecnościami
-    nieobecnosci = {k: v for k, v in rodzaje_frekwencji.items() if k.lower() != "obecność"}
-    
-    zadania = coordinator_data.get("zadania", [])[:5]  # Najblizsze 5 zadan
-    
-    uwagi_raw = coordinator_data.get("uwagi", [])[:5]  # Ostatnie 5 uwag
-    uwagi_list = []
-    for u in uwagi_raw:
+def _parse_date(date_str: str):
+    """Pomocnicze parsowanie daty z różnych formatów stosowanych w Librusie."""
+    if not date_str:
+        return None
+    from datetime import datetime
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+        "%d.%m.%Y %H:%M:%S",
+        "%d.%m.%Y %H:%M",
+        "%d.%m.%Y",
+    ):
+        try:
+            return datetime.strptime(str(date_str).strip(), fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _format_grades(coordinator_data: dict, days: int = 7) -> str:
+    """Formatuj oceny zdobyte w ostatnich `days` dniach (domyślnie 7 dni)."""
+    from datetime import date, timedelta
+    today = date.today()
+    cutoff = today - timedelta(days=days)
+    oceny_wg_przedmiotu = coordinator_data.get("oceny_wg_przedmiotu") or {}
+    wyniki = []
+
+    for subject, grades in oceny_wg_przedmiotu.items():
+        w_okresie = []
+        for g in grades:
+            d = _parse_date(g.get("data") or g.get("date"))
+            if d and d >= cutoff:
+                kat = f" ({g.get('kategoria')})" if g.get("kategoria") else ""
+                data_str = f", {d.strftime('%Y-%m-%d')}"
+                w_okresie.append(f"{g.get('ocena')}{kat}{data_str}")
+        if w_okresie:
+            wyniki.append(f"- {subject}: " + "; ".join(w_okresie))
+
+    return "\n".join(wyniki) if wyniki else "Brak nowych ocen w wybranym okresie"
+
+
+def _format_exams(coordinator_data: dict, days: int = 7) -> str:
+    """Formatuj zapowiedziane sprawdziany i kartkówki z Terminarza na `days` dni w przód (domyślnie 7)."""
+    from datetime import date, timedelta
+    today = date.today()
+    max_date = today + timedelta(days=days)
+    terminarz = coordinator_data.get("terminarz") or []
+
+    test_types = ("sprawdzian", "kartkowka", "klasowka", "praca klasowa", "test")
+    wyniki = []
+
+    for ev in terminarz:
+        d = _parse_date(ev.get("data"))
+        if not d or not (today <= d <= max_date):
+            continue
+
+        rodzaj = (ev.get("rodzaj") or "").lower()
+        tytul = (ev.get("tytul") or "").lower()
+        if any(t in rodzaj or t in tytul for t in test_types):
+            przedmiot = ev.get("przedmiot") or "Zadanie"
+            tytul_oryg = ev.get("tytul") or "Sprawdzian"
+            dzien_tyg = ev.get("tydzien") or ""
+            dzien_str = f" ({dzien_tyg})" if dzien_tyg else ""
+
+            szczegoly = ev.get("szczegoly") or {}
+            opis = szczegoly.get("Opis") or ""
+            if opis and str(opis).lower() != "unknown":
+                opis_str = f" - zakres: {str(opis).replace(chr(10), ' ')}"
+            else:
+                opis_str = ""
+
+            godzina = f", godz. {ev.get('godzina')}" if ev.get("godzina") else ""
+            wyniki.append(f"- {ev.get('data')}{dzien_str} {przedmiot}: {tytul_oryg}{godzina}{opis_str}")
+
+    return "\n".join(wyniki) if wyniki else "Brak zapowiedzianych sprawdzianów w wybranym okresie"
+
+
+def _format_homework(coordinator_data: dict, days: int = 7) -> str:
+    """Formatuj zadania domowe z modułu zadań na `days` dni w przód (domyślnie 7)."""
+    from datetime import date, timedelta
+    today = date.today()
+    max_date = today + timedelta(days=days)
+    zadania = coordinator_data.get("zadania") or []
+    wyniki = []
+
+    for z in zadania:
+        termin_str = z.get("termin") or ""
+        d = _parse_date(termin_str)
+        if d and not (today <= d <= max_date):
+            continue
+        przedmiot = z.get("przedmiot") or "Przedmiot"
+        kat = z.get("kategoria") or "Zadanie"
+        t_info = f" (termin: {termin_str})" if termin_str else ""
+        wyniki.append(f"- {przedmiot}: {kat}{t_info}")
+
+    return "\n".join(wyniki) if wyniki else "Brak zapowiedzianych zadań domowych w wybranym okresie"
+
+
+def _format_notes(coordinator_data: dict, days: int = 7) -> str:
+    """Formatuj uwagi wpisane w ostatnich `days` dniach (domyślnie 7)."""
+    from datetime import date, timedelta
+    today = date.today()
+    cutoff = today - timedelta(days=days)
+    uwagi = coordinator_data.get("uwagi") or []
+    wyniki = []
+
+    for u in uwagi:
+        d = _parse_date(u.get("data"))
+        if d and d < cutoff:
+            continue
         rodzaj = u.get("rodzaj", "inna")
         tresc = u.get("tresc", "")
         kategoria = u.get("kategoria", "")
@@ -86,38 +171,109 @@ async def async_generate_summary(hass: HomeAssistant, entry_id: str, coordinator
         prefix = f"[{rodzaj.upper()}]" if rodzaj else ""
         kat_str = f" {kategoria}:" if kategoria else ""
         nauczyciel_str = f" (nauczyciel: {nauczyciel})" if nauczyciel else ""
-        uwagi_list.append(f"- {prefix}{kat_str} {tresc}{nauczyciel_str}".strip())
-    uwagi_str = chr(10).join(uwagi_list) if uwagi_list else "Brak uwag w dzienniku"
+        data_str = f" [{u.get('data')}]" if u.get("data") else ""
+        wyniki.append(f"- {prefix}{kat_str} {tresc}{nauczyciel_str}{data_str}".strip())
 
-    oceny_str = chr(10).join(oceny) if oceny else "Brak nowych ocen"
+    return "\n".join(wyniki) if wyniki else "Brak uwag w wybranym okresie"
+
+
+def _substitute_prompt_tags(prompt: str, coordinator_data: dict, dzisiejsza_data: str, imie: str) -> str:
+    """Podmień tagi dynamiczne w prompcie z obsługą parametrów dni {tag:X} (domyślnie 7 dni)."""
+    # 1. Tagi parametryczne
+    prompt = re.sub(
+        r"\{oceny(?::(\d+))?\}",
+        lambda m: _format_grades(coordinator_data, int(m.group(1)) if m.group(1) else 7),
+        prompt,
+    )
+    prompt = re.sub(
+        r"\{sprawdziany(?::(\d+))?\}",
+        lambda m: _format_exams(coordinator_data, int(m.group(1)) if m.group(1) else 7),
+        prompt,
+    )
+    prompt = re.sub(
+        r"\{zadania(?::(\d+))?\}",
+        lambda m: _format_homework(coordinator_data, int(m.group(1)) if m.group(1) else 7),
+        prompt,
+    )
+    prompt = re.sub(
+        r"\{uwagi(?::(\d+))?\}",
+        lambda m: _format_notes(coordinator_data, int(m.group(1)) if m.group(1) else 7),
+        prompt,
+    )
+
+    # 2. Tagi stałe
+    frekwencja = coordinator_data.get("frekwencja_stat") or {}
+    rodzaje_frekwencji = frekwencja.get("rodzaje") or {}
+    nieobecnosci = {k: v for k, v in rodzaje_frekwencji.items() if str(k).lower() != "obecność"}
     frekwencja_str = str(frekwencja.get("procent_semestr", "Brak danych"))
     nieobecnosci_str = json.dumps(nieobecnosci) if nieobecnosci else "Brak spóźnień i nieobecności"
-    zadania_str = chr(10).join([f"- {z.get('przedmiot')}: {z.get('kategoria')} (termin: {z.get('termin')})" for z in zadania]) if zadania else "Brak nadchodzących sprawdzianów"
+
+    prompt = (
+        prompt.replace("{dzisiejsza_data}", dzisiejsza_data)
+        .replace("{imie}", imie)
+        .replace("{frekwencja}", frekwencja_str)
+        .replace("{nieobecnosci}", nieobecnosci_str)
+    )
+
+    return prompt
+
+
+def _extract_ai_role_text(result_json: dict, role: str) -> str:
+    """Wyodrębnij tekst dla roli (rodzic lub uczen) bez względu na wielkość liter i synonimy."""
+    if not isinstance(result_json, dict):
+        return f"Brak danych dla {role}"
+
+    synonyms_rodzic = (
+        "rodzic", "rodzice", "parent", "parents", "dla_rodzica", "podsumowanie_rodzic", "podsumowanie_dla_rodzica"
+    )
+    synonyms_uczen = (
+        "uczen", "uczeń", "student", "pupil", "dla_ucznia", "podsumowanie_uczen", "podsumowanie_dla_ucznia"
+    )
+
+    target_synonyms = synonyms_rodzic if role == "rodzic" else synonyms_uczen
+
+    # 1. Bezpośrednie dopasowanie klucza case-insensitive
+    for k, v in result_json.items():
+        if str(k).strip().lower() in target_synonyms:
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+            elif isinstance(v, dict):
+                nested = _extract_ai_role_text(v, role)
+                if not nested.startswith("Brak danych"):
+                    return nested
+
+    # 2. Zagnieżdżenie pod imieniem ucznia (np. {"Wiktor": {"rodzic": "..."}})
+    for v in result_json.values():
+        if isinstance(v, dict):
+            nested = _extract_ai_role_text(v, role)
+            if not nested.startswith("Brak danych"):
+                return nested
+
+    # 3. Bezpośredni klucz fallback
+    if role in result_json:
+        return str(result_json[role])
+
+    return f"Brak danych dla {role}"
+
+
+async def async_generate_summary(hass: HomeAssistant, entry_id: str, coordinator_data: dict, agent_id: str, options: dict = None):
+    """Generate Weekly AI Summary using Home Assistant conversation API."""
+    options = options or {}
+    if not coordinator_data:
+        _LOGGER.error("Brak danych do wygenerowania podsumowania AI")
+        return
+
+    student = coordinator_data.get("student_info")
+    imie = student.name if student else "Uczeń"
 
     from datetime import date
     dzisiejsza_data = date.today().strftime("%Y-%m-%d")
 
-    prompt_parent = options.get("ai_prompt_weekly_parent", DEFAULT_PROMPT_WEEKLY_PARENT)
-    prompt_parent = (
-        prompt_parent.replace("{dzisiejsza_data}", dzisiejsza_data)
-        .replace("{imie}", imie)
-        .replace("{oceny}", oceny_str)
-        .replace("{frekwencja}", frekwencja_str)
-        .replace("{nieobecnosci}", nieobecnosci_str)
-        .replace("{zadania}", zadania_str)
-        .replace("{uwagi}", uwagi_str)
-    )
-    
-    prompt_student = options.get("ai_prompt_weekly_student", DEFAULT_PROMPT_WEEKLY_STUDENT)
-    prompt_student = (
-        prompt_student.replace("{dzisiejsza_data}", dzisiejsza_data)
-        .replace("{imie}", imie)
-        .replace("{oceny}", oceny_str)
-        .replace("{frekwencja}", frekwencja_str)
-        .replace("{nieobecnosci}", nieobecnosci_str)
-        .replace("{zadania}", zadania_str)
-        .replace("{uwagi}", uwagi_str)
-    )
+    prompt_parent_raw = options.get("ai_prompt_weekly_parent", DEFAULT_PROMPT_WEEKLY_PARENT)
+    prompt_parent = _substitute_prompt_tags(prompt_parent_raw, coordinator_data, dzisiejsza_data, imie)
+
+    prompt_student_raw = options.get("ai_prompt_weekly_student", DEFAULT_PROMPT_WEEKLY_STUDENT)
+    prompt_student = _substitute_prompt_tags(prompt_student_raw, coordinator_data, dzisiejsza_data, imie)
 
     prompt = f"""
 Wykonaj podsumowanie tygodnia.
@@ -138,45 +294,45 @@ Format odpowiedzi:
         service_data = {"text": prompt}
         if agent_id:
             service_data["agent_id"] = agent_id
-            
+
         response = await hass.services.async_call(
             "conversation",
             "process",
             service_data,
             blocking=True,
-            return_response=True
+            return_response=True,
         )
-        
+
         result_text = ""
         if isinstance(response, dict):
             result_text = response.get("response", {}).get("speech", {}).get("plain", {}).get("speech", "")
         elif hasattr(response, "response"):
             result_text = response.response.speech.get("plain", {}).get("speech", "")
-            
+
         if not result_text:
             _LOGGER.error("Pusta odpowiedź od modelu AI.")
             return
-            
+
         result_json = _parse_ai_json_response(result_text)
-        
-        rodzic_text = result_json.get("rodzic", "Brak danych dla rodzica")
-        uczen_text = result_json.get("uczen", "Brak danych dla ucznia")
-        
+
+        rodzic_text = _extract_ai_role_text(result_json, "rodzic")
+        uczen_text = _extract_ai_role_text(result_json, "uczen")
+
         _LOGGER.info("Pomyślnie wygenerowano podsumowanie AI dla %s", imie)
-        
+
         # Rozgłoszenie wygenerowanych tekstów do sensorów
         async_dispatcher_send(
-            hass, 
-            f"librus_ai_summary_{entry_id}", 
-            {"rodzic": rodzic_text, "uczen": uczen_text}
+            hass,
+            f"librus_ai_summary_{entry_id}",
+            {"rodzic": rodzic_text, "uczen": uczen_text},
         )
-        
+
     except Exception as ex:
         _LOGGER.error("Błąd podczas generowania podsumowania AI: %s", ex)
         async_dispatcher_send(
-            hass, 
-            f"librus_ai_summary_{entry_id}", 
-            {"rodzic": f"Błąd AI: {ex}", "uczen": f"Błąd AI: {ex}"}
+            hass,
+            f"librus_ai_summary_{entry_id}",
+            {"rodzic": f"Błąd AI: {ex}", "uczen": f"Błąd AI: {ex}"},
         )
 
 async def async_generate_messages_summary(hass: HomeAssistant, entry_id: str, coordinator_data: dict, agent_id: str, options: dict = None):
@@ -275,13 +431,16 @@ Format odpowiedzi:
             return
             
         result_json = _parse_ai_json_response(result_text)
-        
+
+        rodzic_text = _extract_ai_role_text(result_json, "rodzic")
+        uczen_text = _extract_ai_role_text(result_json, "uczen")
+
         async_dispatcher_send(
             hass, 
             f"librus_ai_messages_summary_{entry_id}", 
             {
-                "rodzic": result_json.get("rodzic", "Brak"), 
-                "uczen": result_json.get("uczen", "Brak")
+                "rodzic": rodzic_text, 
+                "uczen": uczen_text,
             }
         )
     except Exception as ex:

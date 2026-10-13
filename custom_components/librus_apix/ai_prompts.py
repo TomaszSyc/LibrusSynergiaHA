@@ -12,7 +12,8 @@ Dane z dziennika:
 - Frekwencja w semestrze: {frekwencja}%
 - Spóźnienia i nieobecności: {nieobecnosci}
 - Uwagi i pochwały od nauczycieli: {uwagi}
-- Najbliższe sprawdziany i zadania: {zadania}
+- Zapowiedziane sprawdziany i kartkówki: {sprawdziany}
+- Zadania domowe: {zadania}
 """.strip()
 
 DEFAULT_PROMPT_WEEKLY_STUDENT = """
@@ -27,7 +28,8 @@ Twoje dane z dziennika:
 - Twoja frekwencja w semestrze: {frekwencja}%
 - Twoje spóźnienia/nieobecności: {nieobecnosci}
 - Uwagi i pochwały od nauczycieli: {uwagi}
-- W najbliższych dniach czeka Cię: {zadania}
+- Zapowiedziane sprawdziany i kartkówki: {sprawdziany}
+- Zadania domowe: {zadania}
 """.strip()
 
 DEFAULT_PROMPT_MESSAGES_PARENT = """
