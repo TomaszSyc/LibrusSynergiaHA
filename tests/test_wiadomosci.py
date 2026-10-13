@@ -154,6 +154,7 @@ async def test_service_get_message_single_student(hass):
             blocking=True,
             return_response=True,
         )
+        await hass.async_block_till_done()
 
         assert response == {"content": "Treść pobranej wiadomości"}
         mock_mc.assert_called_once_with(client._client, "/wiadomosci/1")
