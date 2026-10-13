@@ -5,7 +5,7 @@ W najnowszej wersji wprowadziliśmy także wsparcie dla **Sztucznej Inteligencji
 
 ## ✨ Funkcje i Nowości (v3.0)
 
-- 🤖 **Tygodniowe Podsumowanie AI (NOWOŚĆ)** - generowanie inteligentnych raportów z postępów (osobno dla rodzica i ucznia).
+- 🤖 **Tygodniowe i Dzienne Podsumowanie AI (NOWOŚĆ)** - generowanie inteligentnych raportów z postępów oraz zwięzłych podsumowań wiadomości (dla rodzica i ucznia).
 - 🧠 **Adaptacyjne odświeżanie i Cache (NOWOŚĆ)** - inteligentne odpytywanie Librusa (rzadziej w nocy) i odporność na awarie dziennika.
 - 🎮 **Nauka i To-Do (NOWOŚĆ)** - interaktywna lista "Przygotowanie do lekcji" przypominająca o sprawdzianach (gamifikacja).
 - 📬 **Pobieranie treści wiadomości (NOWOŚĆ)** - nowa usługa `get_message` i pełna kontrola nad statusem "przeczytane".
@@ -18,9 +18,57 @@ W najnowszej wersji wprowadziliśmy także wsparcie dla **Sztucznej Inteligencji
 - 📢 **Ogłoszenia** - odczyt szkolnej tablicy ogłoszeń
 - 👨‍🎓 **Frekwencja** - monitorowanie spóźnień i nieobecności
 
-## 🚀 Sensory
+---
 
-Integracja tworzy następujące sensory:
+## 📦 Instalacja
+
+### Opcja 1: HACS (Zalecana)
+
+Kliknij poniższy przycisk, aby automatycznie dodać repozytorium do HACS z właściwą kategorią:
+
+[![Otwórz w HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=procaktomasz&repository=LibrusSynergiaHA&category=integration)
+
+Lub ręcznie:
+
+1. Otwórz HACS w Home Assistant
+2. Kliknij trzy kropki (⋮) w prawym górnym rogu
+3. Wybierz **"Custom repositories"**
+4. W polu URL wpisz dokładnie: `https://github.com/procaktomasz/LibrusSynergiaHA`  
+   ⚠️ **Bez `.git` na końcu!**
+5. W polu **Category** wybierz: **`Integration`**  
+   ⚠️ **NIE wybieraj "AppDaemon", "Plugin" ani żadnej innej opcji!**
+6. Kliknij **ADD**
+7. Znajdź **"Librus Synergia HA"** na liście i zainstaluj
+8. Restartuj Home Assistant
+
+> **Uwaga:** Błąd *"is not a valid app repository"* pojawia się, gdy w kroku 5 zostanie wybrana nieprawidłowa kategoria (np. "AppDaemon"). Upewnij się, że wybrano **Integration**.
+
+### Opcja 2: Instalacja manualna
+
+1. Skopiuj folder `custom_components/librus_apix` do `config/custom_components/`
+2. Restartuj Home Assistant
+3. Idź do Konfiguracja > Integracje > Dodaj integrację
+4. Wyszukaj "Librus APIX"
+
+---
+
+## ⚙️ Konfiguracja
+
+1. W Home Assistant: **Ustawienia** > **Urządzenia oraz usługi** > **Dodaj integrację**
+2. Wyszukaj **"Librus APIX"**  
+3. Podaj swoje dane logowania do Librus Synergia.
+4. Kliknij **"Zatwierdź"**
+
+### Opcje integracji i Asystent AI
+Po zainstalowaniu integracji możesz dostosować jej działanie klikając **"Konfiguruj"** na karcie integracji:
+* **Krok 1 (Ustawienia ogólne):** Liczba pobieranych wiadomości, włączenie pobierania pełnej treści oraz liczba dni wyprzedzenia dla przypomnień o sprawdzianach (moduł To-Do).
+* **Krok 2 (Asystent AI):** Włączenie generowania raportów, wybór agenta konwersacyjnego HA (np. OpenAI, Google Gemini, Ollama) oraz pełna personalizacja promptów.
+
+---
+
+## 🚀 Sensory i Encje
+
+Integracja tworzy następujące sensory i encje:
 
 | Sensor / Przycisk | Opis | Wartość |
 |---|---|---|
@@ -62,137 +110,49 @@ Integracja dostarcza interaktywne listy zadań (To-Do) połączone z kalendarzem
 🎮 **Wskazówka:** Do dyspozycji masz ukrytą encję `binary_sensor.librus_[uczen]_nauka_odrobiona`. Przyjmuje ona stan `WŁĄCZONY (on)` tylko wtedy, gdy na interaktywnej liście przygotowań do lekcji nie zalegają żadne nieodkliknięte sprawdziany z nadchodzących dni. 
 To najprostsza metoda na stworzenie w Home Assistant warunku blokującego dostęp do sprzętu rozrywkowego!
 
-## 🤖 Asystent AI i Przykładowe Automatyzacje
+---
+
+## 🤖 Moduł Asystenta AI
 
 Wraz z wersją 3.0.0 integracja została wyposażona w potężne funkcje automatycznego podsumowywania ocen, frekwencji oraz wiadomości przez Sztuczną Inteligencję (wymaga podpięcia asystenta AI, np. OpenAI, Google Gemini lub lokalnego modelu do Home Assistanta).
 
-Zamiast ręcznie wymuszać harmonogramy w kodzie integracji, zachęcamy do tworzenia elastycznych automatyzacji. Kiedy zechcesz otrzymać raport (lub gdy przyjdzie nowa wiadomość), wystarczy, że automatyzacja zasymuluje kliknięcie przycisku `Generuj podsumowanie AI`, a gdy tekst będzie gotowy – wyśle go na Twój telefon.
+Generowane są dwa rodzaje raportów:
+1. **Tygodniowe Podsumowanie Postępów:** Osobne podsumowanie dla rodzica oraz motywujący raport bezpośrednio dla ucznia.
+2. **Dzienne Podsumowanie Wiadomości:** Analiza nowych komunikatów ze szkoły, zadań i ważnych terminów.
 
-Oto gotowe przykłady do wklejenia w widoku YAML automatyzacji:
+> **Wskazówka dot. sensorów AI:** Stan sensora (`state`) zawiera zwięzły skrót (do 250 znaków) przygotowany specjalnie pod powiadomienia push na telefon. Kompletny, wielolinijkowy raport sformatowany w Markdown znajduje się w atrybucie `pełny_tekst` i najlepiej wyświetlać go na karcie Markdown w Lovelace.
 
-### 1. Piątkowy Raport na Telefon (Podsumowanie tygodnia)
+### 📝 Niestandardowe Prompty AI i Tagi
 
-```yaml
-alias: "Librus: Piątkowy Raport AI"
-description: "Generuje raport ocen w piątek o 17:00 i wysyła push, gdy będzie gotowy"
-mode: single
-trigger:
-  - platform: time
-    at: "17:00:00"
-condition:
-  - condition: time
-    weekday:
-      - fri
-action:
-  - service: button.press
-    target:
-      entity_id: button.librus_twoje_imie_generuj_podsumowanie_ai
-  - wait_for_trigger:
-      - platform: state
-        entity_id: sensor.librus_twoje_imie_podsumowanie_ai_rodzic
-    timeout: "00:02:00"
-    continue_on_timeout: false
-  - service: notify.mobile_app_twoj_telefon
-    data:
-      title: "🤖 Librus AI - Raport Tygodniowy"
-      message: "{{ states('sensor.librus_twoje_imie_podsumowanie_ai_rodzic') }}"
-      data:
-        clickAction: "/szkola-librus/"
-        url: "/szkola-librus/"
-```
+Integracja pozwala na zdefiniowanie własnych instrukcji (promptów) w opcjach konfiguracji (Krok 2: Ustawienia AI). Możesz w nich użyć następujących zmiennych (tagów), które zostaną automatycznie podmienione na aktualne dane z Twojego dziennika Librus:
 
-### 2. Streszczenie Nowych Wiadomości (Reagowanie na bieżąco)
+#### Dostępne znaczniki w Podsumowaniu Tygodnia:
+* `{dzisiejsza_data}` – Bieżąca data (RRRR-MM-DD)
+* `{imie}` – Imię ucznia
+* `{oceny}` – Tekstowa lista ocen zdobytych w ostatnich 7 dniach (obsługuje `{oceny:DNI}`, np. `{oceny:14}`)
+* `{frekwencja}` – Procent frekwencji z ostatnich 7 dni (obsługuje `{frekwencja:DNI}`, np. `{frekwencja:14}`)
+* `{nieobecnosci}` – Wyszczególnione spóźnienia i nieobecności z ostatnich 7 dni z datami i przedmiotami (obsługuje `{nieobecnosci:DNI}`)
+* `{frekwencja_semestr}` – Ogólny procent obecności ucznia w całym bieżącym semestrze
+* `{sprawdziany}` – Zapowiedziane sprawdziany i kartkówki z terminarza na najbliższe 7 dni (obsługuje `{sprawdziany:DNI}`)
+* `{zadania}` – Zadania domowe z modułu zadań na najbliższe 7 dni (obsługuje `{zadania:DNI}`)
+* `{uwagi}` – Pozytywne i negatywne uwagi od nauczycieli z ostatnich 7 dni (obsługuje `{uwagi:DNI}`)
 
-```yaml
-alias: "Librus: Streszczenie Nowych Wiadomości AI"
-description: "Wykrywa nową wiadomość, analizuje ją przez AI i wysyła push na telefon"
-mode: single
-trigger:
-  - platform: state
-    entity_id: sensor.librus_twoje_imie_wiadomosci
-condition:
-  - condition: template
-    value_template: "{{ trigger.to_state.state | int > trigger.from_state.state | int }}"
-action:
-  - service: button.press
-    target:
-      entity_id: button.librus_twoje_imie_generuj_podsumowanie_wiadomosci_ai
-  - wait_for_trigger:
-      - platform: state
-        entity_id: sensor.librus_twoje_imie_podsumowanie_wiadomosci_ai_rodzic
-    timeout: "00:02:00"
-    continue_on_timeout: false
-  - service: notify.mobile_app_twoj_telefon
-    data:
-      title: "📬 Librus AI - Masz nową wiadomość!"
-      message: "{{ states('sensor.librus_twoje_imie_podsumowanie_wiadomosci_ai_rodzic') }}"
-      data:
-        clickAction: "/szkola-librus/"
-        url: "/szkola-librus/"
-```
+#### Dostępne znaczniki w Podsumowaniu Wiadomości:
+* `{dzisiejsza_data}` – Aktualna data (w formacie `RRRR-MM-DD`), ułatwiająca modelowi analizę aktualności i filtrowanie starszych wiadomości
+* `{imie}` – Imię ucznia
+* `{wiadomosci}` – Zestawienie statusu skrzynki, wiadomości nieodczytanych oraz odczytanych z pobraną treścią
 
-## 📦 Instalacja
-
-### Opcja 1: HACS (Zalecana)
-
-Kliknij poniższy przycisk, aby automatycznie dodać repozytorium do HACS z właściwą kategorią:
-
-[![Otwórz w HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=procaktomasz&repository=LibrusSynergiaHA&category=integration)
-
-Lub ręcznie:
-
-1. Otwórz HACS w Home Assistant
-2. Kliknij trzy kropki (⋮) w prawym górnym rogu
-3. Wybierz **"Custom repositories"**
-4. W polu URL wpisz dokładnie: `https://github.com/procaktomasz/LibrusSynergiaHA`  
-   ⚠️ **Bez `.git` na końcu!**
-5. W polu **Category** wybierz: **`Integration`**  
-   ⚠️ **NIE wybieraj "AppDaemon", "Plugin" ani żadnej innej opcji!**
-6. Kliknij **ADD**
-7. Znajdź **"Librus Synergia HA"** na liście i zainstaluj
-8. Restartuj Home Assistant
-
-> **Uwaga:** Błąd *"is not a valid app repository"* pojawia się, gdy w kroku 5 zostanie wybrana nieprawidłowa kategoria (np. "AppDaemon"). Upewnij się, że wybrano **Integration**.
-
-### Opcja 2: Instalacja manualna
-
-1. Skopiuj folder `custom_components/librus_apix` do `config/custom_components/`
-2. Restartuj Home Assistant
-3. Idź do Konfiguracja > Integracje > Dodaj integrację
-4. Wyszukaj "Librus APIX"
-
-## ⚙️ Konfiguracja
-
-1. W Home Assistant: **Konfiguracja** > **Integracje** > **Dodaj integrację**
-2. Wyszukaj **"Librus APIX"**  
-3. Podaj swoje dane logowania do Librus Synergia.
-4. Kliknij **"Prześlij"**
-
-*(Aby włączyć Podsumowania AI, po zainstalowaniu kliknij "Konfiguruj" na karcie integracji i zaznacz odpowiednie opcje).*
-
-### ⚠️ Ważne: Optymalizacja bazy danych (Recorder)
-Niektóre sensory przechowują potężne struktury JSON. Zaleca się wykluczenie ich z zapisu do historii w pliku `configuration.yaml`:
-
-```yaml
-recorder:
-  exclude:
-    entity_globs:
-      - sensor.librus_*_plan_lekcji
-      - sensor.librus_*_wiadomosci
-      - sensor.librus_*_terminarz
-      - sensor.librus_*_zadania
-      - sensor.librus_*_ogloszenia
-      - sensor.librus_*_oceny
-      - sensor.librus_*_tematy_lekcji
-      - sensor.librus_*_frekwencja
-```
+---
 
 ## 🧩 Gotowy panel
 
 Nie chcesz składać kart samodzielnie? W katalogu [`examples/dashboard`](examples/dashboard) jest gotowy panel „Szkoła” (strona główna + podwidok każdego ucznia) do wklejenia w edytorze kodu źródłowego panelu, oraz generator dla dowolnej liczby uczniów.
 
+---
 
 ## 📊 Przykładowe karty Lovelace
+
+> **WAŻNE:** Pamiętaj, aby we wszystkich poniższych nazwach zmienić `imie_nazwisko` na poprawne dane z Twoich encji!
 
 ### NOWOŚĆ: Karta Tygodniowego Podsumowania AI
 ```yaml
@@ -270,9 +230,6 @@ content: |
 ```
 
 ### Karta ocen i średnich
-
-> **WAŻNE:** Pamiętaj, aby we wszystkich poniższych nazwach zmienić `imie_nazwisko` na poprawne dane z Twoich encji!
-
 ```yaml
 type: entities
 title: "📚 Oceny Librus"
@@ -565,13 +522,86 @@ severity:
   red: 0
 ```
 
-## 🔔 Zdarzenia (Events) i Powiadomienia na telefon
+---
+
+## ⚡ Automatyzacje i Powiadomienia
+
+Zamiast ręcznie wymuszać harmonogramy w kodzie integracji, zachęcamy do tworzenia elastycznych automatyzacji Home Assistant.
+
+### 🤖 1. Automatyzacje Asystenta AI
+
+Kiedy zechcesz otrzymać raport (lub gdy przyjdzie nowa wiadomość), automatyzacja symuluje wciśnięcie przycisku, a gdy tekst raportu będzie gotowy – wysyła go na Twój telefon wraz z bezpośrednim odnośnikiem do dashboardu.
+
+#### Piątkowy Raport na Telefon (Podsumowanie tygodnia)
+
+```yaml
+alias: "Librus: Piątkowy Raport AI"
+description: "Generuje raport ocen w piątek o 17:00 i wysyła push, gdy będzie gotowy"
+mode: single
+trigger:
+  - platform: time
+    at: "17:00:00"
+condition:
+  - condition: time
+    weekday:
+      - fri
+action:
+  - service: button.press
+    target:
+      entity_id: button.librus_twoje_imie_generuj_podsumowanie_ai
+  - wait_for_trigger:
+      - platform: state
+        entity_id: sensor.librus_twoje_imie_podsumowanie_ai_rodzic
+    timeout: "00:02:00"
+    continue_on_timeout: false
+  - service: notify.mobile_app_twoj_telefon
+    data:
+      title: "🤖 Librus AI - Raport Tygodniowy"
+      message: "{{ states('sensor.librus_twoje_imie_podsumowanie_ai_rodzic') }}"
+      data:
+        clickAction: "/szkola-librus/"
+        url: "/szkola-librus/"
+```
+
+#### Streszczenie Nowych Wiadomości (Reagowanie na bieżąco)
+
+```yaml
+alias: "Librus: Streszczenie Nowych Wiadomości AI"
+description: "Wykrywa nową wiadomość, analizuje ją przez AI i wysyła push na telefon"
+mode: single
+trigger:
+  - platform: state
+    entity_id: sensor.librus_twoje_imie_wiadomosci
+condition:
+  - condition: template
+    value_template: "{{ trigger.to_state.state | int > trigger.from_state.state | int }}"
+action:
+  - service: button.press
+    target:
+      entity_id: button.librus_twoje_imie_generuj_podsumowanie_wiadomosci_ai
+  - wait_for_trigger:
+      - platform: state
+        entity_id: sensor.librus_twoje_imie_podsumowanie_wiadomosci_ai_rodzic
+    timeout: "00:02:00"
+    continue_on_timeout: false
+  - service: notify.mobile_app_twoj_telefon
+    data:
+      title: "📬 Librus AI - Masz nową wiadomość!"
+      message: "{{ states('sensor.librus_twoje_imie_podsumowanie_wiadomosci_ai_rodzic') }}"
+      data:
+        clickAction: "/szkola-librus/"
+        url: "/szkola-librus/"
+```
+
+---
+
+### 🔔 2. Zdarzenia (Events) i Powiadomienia w czasie rzeczywistym
 
 Integracja od wersji 3.0 wysyła automatyczne zdarzenia Home Assistant (Events), kiedy wykryje nowości w dzienniku (nowa ocena, wiadomość, uwaga, nieobecność, zadanie domowe lub wydarzenie w terminarzu). Zdarzenia wysyłane są bez duplikatów przy każdym cyklu odświeżania danych.
 
 > **Test bez czekania:** Idź do **Narzędzia deweloperskie → Zdarzenia**, wpisz typ zdarzenia (np. `librus_apix_nowa_ocena`), uzupełnij przykładowe dane zdarzenia w formacie YAML/JSON i kliknij **Wyślij zdarzenie**.
 
-### 📝 Powiadomienie o nowej ocenie
+#### 📝 Powiadomienie o nowej ocenie
 Zdarzenie: `librus_apix_nowa_ocena`  
 Dostępne dane: `uczen`, `przedmiot`, `ocena`, `data`, `kategoria`, `nauczyciel`, `opis`
 
@@ -592,7 +622,7 @@ automation:
             Nauczyciel: {{ trigger.event.data.nauczyciel }}
 ```
 
-### 📬 Powiadomienie o nowej wiadomości
+#### 📬 Powiadomienie o nowej wiadomości
 Zdarzenie: `librus_apix_nowa_wiadomosc`  
 Dostępne dane: `uczen` (Imię i Nazwisko z profilu), `nadawca`, `temat`, `data`, `ma_zalacznik`
 
@@ -611,7 +641,7 @@ automation:
             Temat: {{ trigger.event.data.temat }}
 ```
 
-### ⚠️ Powiadomienie o nowej uwadze
+#### ⚠️ Powiadomienie o nowej uwadze
 Zdarzenie: `librus_apix_nowa_uwaga`  
 Dostępne dane: `uczen`, `data`, `rodzaj` (`pozytywna` / `negatywna` / `neutralna`), `kategoria`, `nauczyciel`, `tresc`
 
@@ -630,7 +660,7 @@ automation:
           message: "{{ trigger.event.data.tresc }} ({{ trigger.event.data.nauczyciel }})"
 ```
 
-### 🚸 Powiadomienie o nieobecności lub spóźnieniu
+#### 🚸 Powiadomienie o nieobecności lub spóźnieniu
 Zdarzenie: `librus_apix_nowa_nieobecnosc`  
 Dostępne dane: `uczen`, `data`, `dzien_tygodnia`, `numer` (lekcji), `przedmiot`, `nauczyciel`, `rodzaj` (np. `nb`, `sp`, `u`, `zw`), `opis` (np. "nieobecność")
 
@@ -649,7 +679,7 @@ automation:
             lekcja {{ trigger.event.data.numer }}: {{ trigger.event.data.przedmiot }}
 ```
 
-### 📚 Powiadomienie o nowym zadaniu domowym
+#### 📚 Powiadomienie o nowym zadaniu domowym
 Zdarzenie: `librus_apix_nowe_zadanie`  
 Dostępne dane: `uczen`, `przedmiot`, `kategoria`, `termin`, `nauczyciel`
 
@@ -666,7 +696,7 @@ automation:
           message: "{{ trigger.event.data.przedmiot }} ({{ trigger.event.data.kategoria }}), termin: {{ trigger.event.data.termin }}"
 ```
 
-### 📅 Powiadomienie o nowym wpisie w terminarzu (sprawdzian / wydarzenie)
+#### 📅 Powiadomienie o nowym wpisie w terminarzu (sprawdzian / wydarzenie)
 Zdarzenie: `librus_apix_nowe_zdarzenie`  
 Dostępne dane: `uczen`, `data`, `tytul`, `przedmiot`, `godzina`
 
@@ -683,18 +713,11 @@ automation:
           message: "{{ trigger.event.data.przedmiot }} na dzień {{ trigger.event.data.data }} {{ trigger.event.data.godzina }}"
 ```
 
-## 🛠️ Usługa: Pobieranie pełnej treści wiadomości (`librus_apix.get_message`)
+---
 
-Integracja udostępnia dedykowaną usługę `librus_apix.get_message` pozwalającą na pobranie pełnej treści pojedynczej wiadomości z Librusa na żądanie.
+### ⏱️ 3. Zaawansowane: Własny harmonogram odpytywania Librusa
 
-* **Parametry usługi:**
-  * `url` (wymagany) – odnośnik (`href`) wiadomości, dostępny m.in. w atrybucie `wiadomosci` sensora `sensor.librus_[uczen]_wiadomosci`.
-* **Działanie:** Pobiera treść wiadomości i emituje zdarzenie `librus_apix_message_read` z polami `url` oraz `content`.
-* *Uwaga:* Pobranie wiadomości za pomocą tej usługi oznacza ją jako przeczytaną w portalu Librus Synergia.
-
-## Zaawansowane: Harmonogram odpytywania Librusa
-
-Domyślnie integracja odświeża się adaptacyjnie, ale nadal możesz wyłączyć wewnętrzny system i wymusić odpytywanie z własnych automatyzacji HA. Wyłącz "Włącz odpytywanie w poszukiwaniu aktualizacji" w opcjach integracji, a następnie dodaj:
+Domyślnie integracja odświeża się adaptacyjnie (co 15 minut w godzinach szkolnych, rzadziej w nocy), ale nadal możesz wyłączyć wewnętrzny system i wymusić odpytywanie z własnych automatyzacji HA. Wyłącz "Włącz odpytywanie w poszukiwaniu aktualizacji" w opcjach integracji, a następnie dodaj:
 
 ```yaml
 alias: "Librus - Dynamiczne Odpytywanie"
@@ -720,28 +743,39 @@ action:
       entity_id: sensor.librus_twoje_dane_ogloszenia
 ```
 
-## 🤖 Niestandardowe Prompty AI
+---
 
-Integracja pozwala na zdefiniowanie własnych instrukcji (promptów) w opcjach konfiguracji (Krok 2: Ustawienia AI). Możesz w nich użyć następujących zmiennych (tagów), które zostaną automatycznie podmienione na aktualne dane z Twojego dziennika Librus:
+## 🛠️ Usługa: Pobieranie pełnej treści wiadomości (`librus_apix.get_message`)
 
-### Dostępne znaczniki w Podsumowaniu Wiadomości:
-* `{dzisiejsza_data}` – Aktualna data (w formacie `RRRR-MM-DD`), ułatwiająca modelowi analizę aktualności i filtrowanie starszych wiadomości
-* `{imie}` – Imię ucznia
-* `{wiadomosci}` – Zestawienie statusu skrzynki, wiadomości nieodczytanych oraz odczytanych z pobraną treścią
+Integracja udostępnia dedykowaną usługę `librus_apix.get_message` pozwalającą na pobranie pełnej treści pojedynczej wiadomości z Librusa na żądanie.
 
-### Dostępne znaczniki w Podsumowaniu Tygodnia:
-* `{dzisiejsza_data}` – Bieżąca data (RRRR-MM-DD)
-* `{imie}` – Imię ucznia
-* `{oceny}` – Tekstowa lista ocen zdobytych w ostatnich 7 dniach (obsługuje `{oceny:DNI}`, np. `{oceny:14}`)
-* `{frekwencja}` – Procent frekwencji z ostatnich 7 dni (obsługuje `{frekwencja:DNI}`, np. `{frekwencja:14}`)
-* `{nieobecnosci}` – Wyszczególnione spóźnienia i nieobecności z ostatnich 7 dni z datami i przedmiotami (obsługuje `{nieobecnosci:DNI}`)
-* `{frekwencja_semestr}` – Ogólny procent obecności ucznia w całym bieżącym semestrze
-* `{sprawdziany}` – Zapowiedziane sprawdziany i kartkówki z terminarza na najbliższe 7 dni (obsługuje `{sprawdziany:DNI}`)
-* `{zadania}` – Zadania domowe z modułu zadań na najbliższe 7 dni (obsługuje `{zadania:DNI}`)
-* `{uwagi}` – Pozytywne i negatywne uwagi od nauczycieli z ostatnich 7 dni (obsługuje `{uwagi:DNI}`)
+* **Parametry usługi:**
+  * `url` (wymagany) – odnośnik (`href`) wiadomości, dostępny m.in. w atrybucie `wiadomosci` sensora `sensor.librus_[uczen]_wiadomosci`.
+* **Działanie:** Pobiera treść wiadomości i emituje zdarzenie `librus_apix_message_read` z polami `url` oraz `content`.
+* *Uwaga:* Pobranie wiadomości za pomocą tej usługi oznacza ją jako przeczytaną w portalu Librus Synergia.
 
+---
 
-## 📝 Logi
+## ⚙️ Optymalizacja i Bezpieczeństwo
+
+### ⚠️ Ważne: Optymalizacja bazy danych (Recorder)
+Niektóre sensory przechowują potężne struktury JSON. Zaleca się wykluczenie ich z zapisu do historii w pliku `configuration.yaml`:
+
+```yaml
+recorder:
+  exclude:
+    entity_globs:
+      - sensor.librus_*_plan_lekcji
+      - sensor.librus_*_wiadomosci
+      - sensor.librus_*_terminarz
+      - sensor.librus_*_zadania
+      - sensor.librus_*_ogloszenia
+      - sensor.librus_*_oceny
+      - sensor.librus_*_tematy_lekcji
+      - sensor.librus_*_frekwencja
+```
+
+### 📝 Logi
 
 Aby włączyć szczegółowe logi, dodaj do `configuration.yaml`:
 
@@ -751,17 +785,21 @@ logger:
     custom_components.librus_apix: debug
 ```
 
-## ⚠️ Bezpieczeństwo
+### ⚠️ Bezpieczeństwo
 
 - **Nie udostępniaj swoich danych logowania!**  
-- Dane są przechowywane lokalnie w Home Assistant
-- Komunikacja z Librus odbywa się przez bezpieczne API
+- Dane są przechowywane lokalnie w Home Assistant.
+- Komunikacja z Librus odbywa się przez oficjalny portal i bezpieczne API.
 
-## 🐛 Zgłaszanie błędów
-Jeśli znajdziesz błąd, włącz logi debug, skopiuj logi z błędem i utwórz issue na GitHub.
+### 🐛 Zgłaszanie błędów
+Jeśli znajdziesz błąd, włącz logi debug, skopiuj wpisy z błędem i utwórz issue na GitHubie.
+
+---
 
 ## 📄 Licencja
 MIT License - patrz [LICENSE](LICENSE)
+
+---
 
 ## 📝 Historia Zmian
 
@@ -791,6 +829,8 @@ MIT License - patrz [LICENSE](LICENSE)
 
 ---
 *Pełna historia starszych zmian (v2.2.x i wstecz) znajduje się w zakładce [Releases na naszym GitHubie](https://github.com/procaktomasz/LibrusSynergiaHA/releases).*
+
+---
 
 ## 👨‍💻 Autorzy i podziękowania
 
