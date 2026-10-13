@@ -819,18 +819,22 @@ MIT License - patrz [LICENSE](LICENSE)
 
 ## 📝 Historia Zmian
 
-### v3.0.0 (Najnowsza - dev)
+### v3.0.0
 - 🤖 **Moduł Asystenta AI**: Automatyczne generowanie personalizowanych podsumowań tygodnia i dziennych wiadomości (z profilami dla rodzica i ucznia).
 - 📅 **Integracja Terminarza i Sprawdzianów**: Tagi `{sprawdziany}` i `{zadania}` w promptach AI pozwalają asystentowi analizować nadchodzące testy i prace klasowe.
 - ⏱️ **Parametryczne Prompty AI**: Możliwość definiowania własnych zakresów dni (np. `{oceny:14}`, `{sprawdziany:10}`, `{frekwencja:14}`, `{nieobecnosci:14}`).
-- 📱 **Optymalizacja Powiadomień i Dashboardu**: Stan sensora AI ograniczony do 250 znaków (idealny pod powiadomienia mobilne), a kompletny raport Markdown dostępny w atrybucie `pełny_tekst`.
-- ⚙️ **Wieloetapowa Konfiguracja**: Nowy, czytelny kreator opcji integracji w HA z podpowiedziami tagów AI.
-- 🐛 **Poprawka braku ocen (Issue #39)**: Wykluczenie wadliwej wersji biblioteki `soupsieve 3.0` blokującej parsowanie ocen w Home Assistant.
-- 🧠 **Adaptacyjny Cache**: Zapobiega problemom z `500 Internal Server Error` od Librusa w godzinach porannych.
-- 🎮 **Lista Wyzwań i Nauki (To-Do)**: Wspiera gamifikację. Dodano również czujnik binarny "Nauka Odrobiona".
+- ⚡ **Optymalizacja połączeń HTTP i Keep-Alive**: Wielokrotne ponowne wykorzystanie sesji TCP/TLS, deduplikacja zapytań ocen i zrealizowanych lekcji oraz natychmiastowy start integracji z pamięci podręcznej.
+- 📅 **Usprawnienia planu lekcji**: Precyzyjne dopasowanie sprawdzianów i zastępstw do lekcji (eliminacja sztucznych lekcji `??:??`) oraz czyszczenie planu w dni wolne.
+- 🌐 **Kreator Dashboardu Online**: Dedykowany generator kart Lovelace w przeglądarce pod adresem [procaktomasz.github.io/LibrusSynergiaHA](https://procaktomasz.github.io/LibrusSynergiaHA/).
+- 📱 **Optymalizacja Powiadomień i Dashboardu**: Stan sensora AI ograniczony do 250 znaków, kompletny raport w atrybucie `pełny_tekst`.
+- ⚙️ **Wieloetapowa Konfiguracja**: Nowy kreator opcji w HA z podpowiedziami tagów AI.
+- 🐛 **Poprawka braku ocen (Issue #39)**: Wykluczenie wadliwej biblioteki `soupsieve 3.0`.
+- 🧠 **Adaptacyjny Cache**: Zapobiega problemom z `500 Internal Server Error` od Librusa.
+- 🎮 **Lista Wyzwań i Nauki (To-Do)**: Wspiera gamifikację i czujnik binarny "Nauka Odrobiona".
 - 🚨 **Czujnik Uwag**: Śledzi punktację i uwagi o zachowaniu.
 - 📬 **Wiadomości**: Nowa usługa `get_message` i pełna kontrola odczytywanych wiadomości ze skrzynki.
 - ⚡ **Zdarzenia (Events)**: Szybki system powiadomień bez skomplikowanych szablonów.
+- 💾 **Optymalizacja bazy Recorder**: Dokumentacja i zalecenia wykluczeń encji o dużych atrybutach przed limitem 32 KB.
 
 ### v2.3.1 (Hotfix)
 - 🐛 **Poprawka stabilności**: Usunięcie przestarzałego `aiohttp` z `manifest.json` (zapobiega to wywalaniu się walidacji HASSfest).
