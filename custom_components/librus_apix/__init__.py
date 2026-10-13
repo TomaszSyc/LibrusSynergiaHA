@@ -1396,7 +1396,7 @@ def _fetch_notes(client) -> list | None:
     if not notes:
         return []
     kategorie = getattr(client, "_notice_categories_cache", None)
-    if kategorie is None:
+    if not isinstance(kategorie, dict):
         try:
             kategorie = {
                 c["Id"]: c.get("CategoryName", "")
@@ -1407,7 +1407,7 @@ def _fetch_notes(client) -> list | None:
             _LOGGER.debug("Nie udało się pobrać kategorii uwag: %s", ex)
             kategorie = {}
     osoby = getattr(client, "_notice_users_cache", None)
-    if osoby is None:
+    if not isinstance(osoby, dict):
         try:
             users = client.get(api + "Users").json().get("Users", [])
             osoby = {u["Id"]: f"{u.get('LastName', '')} {u.get('FirstName', '')}".strip() for u in users}
