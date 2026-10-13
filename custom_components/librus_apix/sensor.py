@@ -322,27 +322,47 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
             )
 
             # Fuzja: Zdarzenia z terminarza -> plan lekcji (dodanie pola zdarzenie)
-            if plan_lekcji and terminarz:
-                for t_ev in terminarz:
-                    ev_date = t_ev.get("data")
-                    ev_title = t_ev.get("tytul")
-                    ev_subject = t_ev.get("przedmiot")
-                    ev_num = t_ev.get("numer_lekcji")
-                    
-                    if not ev_date or not ev_title:
-                        continue
+            if plan_lekcji:
+                dni_wolne = {}
+                if terminarz:
+                    dni_wolne = {
+                        t_ev.get("data"): t_ev.get("tytul")
+                        for t_ev in terminarz
+                        if t_ev.get("rodzaj") == "dzien_wolny" and t_ev.get("data")
+                    }
+
+                for day in plan_lekcji:
+                    d_date = day.get("data")
+                    if d_date in dni_wolne:
+                        day["lekcje"] = []
+                        day["dzien_wolny"] = dni_wolne[d_date]
+                    else:
+                        day.setdefault("dzien_wolny", None)
+
+                if terminarz:
+                    for t_ev in terminarz:
+                        ev_date = t_ev.get("data")
+                        ev_title = t_ev.get("tytul")
+                        ev_subject = t_ev.get("przedmiot")
+                        ev_num = t_ev.get("numer_lekcji")
                         
-                    for day in plan_lekcji:
-                        if day.get("data") != ev_date:
+                        if not ev_date or not ev_title:
+                            continue
+
+                        if ev_date in dni_wolne:
                             continue
                             
-                        scored_lekcje = []
-                        max_score = 0
-                        
-                        for lekcja in day.get("lekcje", []):
-                            score = 0
+                        for day in plan_lekcji:
+                            if day.get("data") != ev_date:
+                                continue
+                                
+                            scored_lekcje = []
+                            max_score = 0
                             
-                            # Dopasowanie po nazwie przedmiotu (WAGA: 2)
+                            for lekcja in day.get("lekcje", []):
+                                score = 0
+                                
+                                # Dopasowanie po nazwie przedmiotu (WAGA: 2)
                             if ev_subject and lekcja.get("przedmiot"):
                                 if ev_subject.lower() in lekcja["przedmiot"].lower() or lekcja["przedmiot"].lower() in ev_subject.lower():
                                     score += 2
