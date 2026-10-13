@@ -123,3 +123,120 @@ def test_sensor_pusta_tresc_jako_pusty_string():
     attrs = sensor.extra_state_attributes
     assert attrs["wiadomosci"][0]["tresc"] == ""
 
+
+@pytest.mark.asyncio
+async def test_service_get_message_single_student(hass):
+    """Test usługi get_message dla pojedynczego ucznia ze zwracaniem odpowiedzi."""
+    from custom_components.librus_apix import async_setup
+    from custom_components.librus_apix.const import DOMAIN
+
+    client = MagicMock(spec=LibrusApiClient)
+    client._client = MagicMock()
+    client._token = "token"
+    client._message_cache = {}
+    client.coordinator = MagicMock()
+    client.coordinator.data = {"wiadomosci": [{"href": "/wiadomosci/1"}]}
+
+    await async_setup(hass, {})
+    hass.data[DOMAIN]["entry_1"] = client
+
+    with patch("librus_apix.messages.message_content") as mock_mc:
+        msg_obj = SimpleNamespace(content="Treść pobranej wiadomości")
+        mock_mc.return_value = msg_obj
+
+        events = []
+        hass.bus.async_listen(f"{DOMAIN}_message_read", lambda ev: events.append(ev))
+
+        response = await hass.services.async_call(
+            DOMAIN,
+            "get_message",
+            {"url": "/wiadomosci/1"},
+            blocking=True,
+            return_response=True,
+        )
+
+        assert response == {"content": "Treść pobranej wiadomości"}
+        mock_mc.assert_called_once_with(client._client, "/wiadomosci/1")
+        assert len(events) == 1
+        assert events[0].data["content"] == "Treść pobranej wiadomości"
+        assert events[0].data["url"] == "/wiadomosci/1"
+
+
+@pytest.mark.asyncio
+async def test_service_get_message_multi_student_by_url(hass):
+    """Test wyboru właściwego klienta przy wielu uczniach na podstawie dopasowania URL."""
+    from custom_components.librus_apix import async_setup
+    from custom_components.librus_apix.const import DOMAIN
+
+    client_a = MagicMock(spec=LibrusApiClient)
+    client_a._client = MagicMock()
+    client_a._token = "token_a"
+    client_a._message_cache = {}
+    client_a.coordinator = MagicMock()
+    client_a.coordinator.data = {"wiadomosci": [{"href": "/msg/a1"}]}
+
+    client_b = MagicMock(spec=LibrusApiClient)
+    client_b._client = MagicMock()
+    client_b._token = "token_b"
+    client_b._message_cache = {}
+    client_b.coordinator = MagicMock()
+    client_b.coordinator.data = {"wiadomosci": [{"href": "/msg/b1"}]}
+
+    await async_setup(hass, {})
+    # Rejestrujemy najpierw klienta A, a potem klienta B
+    hass.data[DOMAIN]["entry_a"] = client_a
+    hass.data[DOMAIN]["entry_b"] = client_b
+
+    with patch("librus_apix.messages.message_content") as mock_mc:
+        mock_mc.return_value = SimpleNamespace(content="Treść z konta B")
+
+        # Pobieramy wiadomość należącą do dziecka B
+        response = await hass.services.async_call(
+            DOMAIN,
+            "get_message",
+            {"url": "/msg/b1"},
+            blocking=True,
+            return_response=True,
+        )
+
+        assert response == {"content": "Treść z konta B"}
+        # Upewniamy się, że wywołano klienta B, a NIE klienta A!
+        mock_mc.assert_called_once_with(client_b._client, "/msg/b1")
+
+
+@pytest.mark.asyncio
+async def test_service_get_message_multi_student_by_entity_id(hass):
+    """Test wyboru właściwego klienta przy wielu uczniach na podstawie parametru entity_id."""
+    from custom_components.librus_apix import async_setup
+    from custom_components.librus_apix.const import DOMAIN
+
+    client_a = MagicMock(spec=LibrusApiClient)
+    client_a._client = MagicMock()
+    client_a._token = "token_a"
+
+    client_b = MagicMock(spec=LibrusApiClient)
+    client_b._client = MagicMock()
+    client_b._token = "token_b"
+
+    await async_setup(hass, {})
+    hass.data[DOMAIN]["entry_a"] = client_a
+    hass.data[DOMAIN]["entry_b"] = client_b
+
+    mock_entry = SimpleNamespace(config_entry_id="entry_b")
+    with patch("homeassistant.helpers.entity_registry.EntityRegistry.async_get", return_value=mock_entry):
+        with patch("librus_apix.messages.message_content") as mock_mc:
+            mock_mc.return_value = SimpleNamespace(content="Treść z konta B przez entity_id")
+
+            response = await hass.services.async_call(
+                DOMAIN,
+                "get_message",
+                {"url": "/msg/unknown", "entity_id": "sensor.librus_b_wiadomosci"},
+                blocking=True,
+                return_response=True,
+            )
+
+            assert response == {"content": "Treść z konta B przez entity_id"}
+            mock_mc.assert_called_once_with(client_b._client, "/msg/unknown")
+
+
+

@@ -9,7 +9,7 @@ from typing import Dict, Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import config_validation as cv
@@ -1351,49 +1351,95 @@ async def async_setup(hass: HomeAssistant, config: Dict[str, Any]) -> bool:
             _LOGGER.error("Failed to authenticate")
             return False
 
+    def _is_librus_client(obj) -> bool:
+        return (
+            isinstance(obj, LibrusApiClient)
+            or getattr(obj, "__class__", None).__name__ == "LibrusApiClient"
+            or hasattr(obj, "async_get_messages")
+        )
+
     async def handle_get_message(call):
-        """Obsluga wywolania przyslugiwania wiadomosci."""
+        """Obsluga wywolania pobierania wiadomosci."""
         url = call.data.get("url")
         if not url:
             _LOGGER.error("Brak URL wiadomosci")
-            return
-            
-        # Szukamy klienta
+            return {"content": None, "error": "Brak URL wiadomosci"}
+
+        entity_id = call.data.get("entity_id")
         client = None
-        for entry_id, entry_data in hass.data[DOMAIN].items():
-            if isinstance(entry_data, LibrusApiClient):
-                client = entry_data
-                break
-                
+
+        # 1. Jesli podano jawne entity_id (np. sensor wiadomosci danego ucznia)
+        if entity_id:
+            try:
+                from homeassistant.helpers import entity_registry as er
+                ent_reg = er.async_get(hass)
+                reg_entry = ent_reg.async_get(entity_id)
+                cfg_id = getattr(reg_entry, "config_entry_id", None)
+                if cfg_id:
+                    candidate = hass.data.get(DOMAIN, {}).get(cfg_id)
+                    if _is_librus_client(candidate):
+                        client = candidate
+            except Exception as ex:
+                _LOGGER.debug("Nie udalo sie dopasowac klienta po entity_id %s: %s", entity_id, ex)
+
+        # 2. Jesli nie wskazano klienta jawnie, sprobuj dopasowac ucznia po URL wiadomosci
+        if not client:
+            for entry_id, entry_data in hass.data.get(DOMAIN, {}).items():
+                if _is_librus_client(entry_data):
+                    # Sprawdz czy URL jest w cache wiadomosci tego klienta
+                    if url in getattr(entry_data, "_message_cache", {}):
+                        client = entry_data
+                        break
+                    # Lub w pobranych danych koordynatora
+                    coord = getattr(entry_data, "coordinator", None)
+                    if coord and getattr(coord, "data", None):
+                        msgs = coord.data.get("wiadomosci", [])
+                        if any(isinstance(m, dict) and m.get("href") == url for m in msgs):
+                            client = entry_data
+                            break
+
+        # 3. Fallback: wez pierwszego zarejestrowanego klienta (np. pojedynczy uczen lub archiwalny URL)
+        if not client:
+            for entry_id, entry_data in hass.data.get(DOMAIN, {}).items():
+                if _is_librus_client(entry_data):
+                    client = entry_data
+                    break
+
         if not client:
             _LOGGER.error("Brak skonfigurowanego klienta Librus")
-            return
-            
+            return {"content": None, "error": "Brak skonfigurowanego klienta Librus"}
+
         if not client._client or not client._token:
             if not await client.async_authenticate():
                 _LOGGER.error("Nie udalo sie uwierzytelnic")
-                return
-                
+                return {"content": None, "error": "Nie udalo sie uwierzytelnic klienta"}
+
         try:
             from librus_apix.messages import message_content
             import asyncio
             loop = asyncio.get_running_loop()
             msg_data = await loop.run_in_executor(None, message_content, client._client, url)
-            
+
             content_str = msg_data.content if hasattr(msg_data, 'content') else str(msg_data)
             _LOGGER.info("Pobrano wiadomosc z %s", url)
-            
+
             # Fire event to let user know message was read
             hass.bus.async_fire(
                 f"{DOMAIN}_message_read",
                 {"url": url, "content": content_str}
             )
-            
+
             return {"content": content_str}
         except Exception as ex:
             _LOGGER.error("Blad pobierania wiadomosci %s: %s", url, ex)
+            return {"content": None, "error": str(ex)}
 
-    hass.services.async_register(DOMAIN, "get_message", handle_get_message)
+    hass.services.async_register(
+        DOMAIN,
+        "get_message",
+        handle_get_message,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
 
     return True
 

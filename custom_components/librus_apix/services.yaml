@@ -1,6 +1,6 @@
 get_message:
   name: Pobierz wiadomość
-  description: Pobiera pełną treść wiadomości, co spowoduje oznaczenie jej jako 'przeczytanej' w systemie Librus.
+  description: Pobiera pełną treść wiadomości, co spowoduje oznaczenie jej jako 'przeczytanej' w systemie Librus. Może zwracać odpowiedź (response_variable) zawierającą treść wiadomości.
   fields:
     url:
       name: URL / Odnośnik
@@ -8,3 +8,11 @@ get_message:
       required: true
       selector:
         text:
+    entity_id:
+      name: Czujnik wiadomości (opcjonalnie)
+      description: Czujnik wiadomości ucznia, z którego konta ma zostać pobrana wiadomość (przydatne przy wielu uczniach).
+      required: false
+      selector:
+        entity:
+          domain: sensor
+
