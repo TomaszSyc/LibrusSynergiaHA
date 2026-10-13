@@ -2,15 +2,16 @@ DEFAULT_PROMPT_WEEKLY_PARENT = """
 Jesteś asystentem zajętego rodzica. Przygotuj wyczerpujące, opisowe podsumowanie minionego tygodnia nauki ucznia ({imie}).
 Wskaż w czytelnej formie:
 1. Jakie oceny uczeń otrzymał w tym tygodniu, z jakich przedmiotów i za co (sprawdziany, kartkówki itp.).
-2. Stan frekwencji, ewentualne spóźnienia lub nieobecności wymagające uwagi rodzica.
+2. Stan frekwencji w tym tygodniu, ewentualne spóźnienia lub nieobecności wymagające uwagi rodzica.
 3. Wpisane przez nauczycieli uwagi (pozytywne pochwały oraz ewentualne uwagi negatywne).
 4. Do czego uczeń musi się przygotować w najbliższym czasie (zapowiedziane sprawdziany i zadania domowe).
 Podsumuj, z czym uczeń poradził sobie dobrze, a nad czym warto popracować. Jeśli w minionym tygodniu brak nowych ocen lub uwag, odnotuj to krótko i skup się na frekwencji oraz nadchodzących sprawdzianach i zadaniach.
 
 Dane z dziennika:
 - Oceny w tym tygodniu: {oceny}
-- Frekwencja w semestrze: {frekwencja}%
+- Frekwencja w tym tygodniu: {frekwencja}
 - Spóźnienia i nieobecności: {nieobecnosci}
+- Frekwencja w całym semestrze: {frekwencja_semestr}
 - Uwagi i pochwały od nauczycieli: {uwagi}
 - Zapowiedziane sprawdziany i kartkówki: {sprawdziany}
 - Zadania domowe: {zadania}
@@ -26,8 +27,9 @@ Jeśli nie ma nowych ocen ani uwag, skup się na motywacji, stabilnej frekwencji
 
 Twoje dane z dziennika:
 - Twoje oceny w tym tygodniu: {oceny}
-- Twoja frekwencja w semestrze: {frekwencja}%
+- Twoja frekwencja w tym tygodniu: {frekwencja}
 - Twoje spóźnienia/nieobecności: {nieobecnosci}
+- Twoja frekwencja w całym semestrze: {frekwencja_semestr}
 - Uwagi i pochwały od nauczycieli: {uwagi}
 - Zapowiedziane sprawdziany i kartkówki: {sprawdziany}
 - Zadania domowe: {zadania}

@@ -87,6 +87,7 @@ def test_default_prompts_placeholders():
         assert "{oceny}" in p
         assert "{frekwencja}" in p
         assert "{nieobecnosci}" in p
+        assert "{frekwencja_semestr}" in p
         assert "{zadania}" in p
         assert "{uwagi}" in p
         assert "{sprawdziany}" in p
@@ -258,6 +259,60 @@ def test_substitute_prompt_tags_hubert_empty_grades_with_exams():
     assert "Matematyka: Sprawdzian" in out
     assert "I rozdział" in out
     assert "Liczby i działania" in out
+
+
+def test_substitute_prompt_tags_attendance_parametric():
+    """Weryfikacja parametrycznych tagów {frekwencja:X}, {nieobecnosci:X} i {frekwencja_semestr}."""
+    from datetime import date, timedelta
+    from custom_components.librus_apix.ai_summary import _substitute_prompt_tags
+
+    today = date.today()
+    past_2_days = (today - timedelta(days=2)).strftime("%Y-%m-%d")
+    past_10_days = (today - timedelta(days=10)).strftime("%Y-%m-%d")
+
+    coordinator_data = {
+        "tematy_lekcji": [
+            {"data": past_2_days, "przedmiot": "Matematyka", "numer": 1, "obecnosc": "ob"},
+            {"data": past_2_days, "przedmiot": "Fizyka", "numer": 2, "obecnosc": "ob"},
+            {"data": past_2_days, "przedmiot": "Chemia", "numer": 3, "obecnosc": "sp", "obecnosc_opis": "spóźnienie"},
+            {"data": past_10_days, "przedmiot": "Historia", "numer": 1, "obecnosc": "nb", "obecnosc_opis": "nieobecność"},
+        ],
+        "frekwencja": [
+            {"data": past_2_days, "przedmiot": "Chemia", "symbol": "sp", "typ": "spóźnienie", "godzina": 3},
+            {"data": past_10_days, "przedmiot": "Historia", "symbol": "nb", "typ": "nieobecność", "godzina": 1},
+        ],
+        "frekwencja_stat": {"procent_semestr": 92.5},
+    }
+
+    # 1. Domyślne 7 dni: liczy 3 lekcje z past_2_days (2 ob, 1 sp -> 66.7%), historia sprzed 10 dni odpada
+    prompt_default = "Frekwencja: {frekwencja}\nNieobecności:\n{nieobecnosci}\nSemestr: {frekwencja_semestr}"
+    out_default = _substitute_prompt_tags(prompt_default, coordinator_data, today.strftime("%Y-%m-%d"), "Wiktor")
+    assert "66.7%" in out_default
+    assert "2/3 zrealizowanych lekcji" in out_default
+    assert "Chemia" in out_default
+    assert "spóźnienie" in out_default
+    assert "Historia" not in out_default
+    assert "Semestr: 92.5%" in out_default
+
+    # 2. Parametryczne 14 dni: wchodzi też historia
+    prompt_custom = "Frekwencja: {frekwencja:14}\nNieobecności:\n{nieobecnosci:14}"
+    out_custom = _substitute_prompt_tags(prompt_custom, coordinator_data, today.strftime("%Y-%m-%d"), "Wiktor")
+    assert "50.0%" in out_custom  # 2 ob na 4 lekcje
+    assert "Historia" in out_custom
+    assert "Chemia" in out_custom
+
+    # 3. Brak nieobecności w okresie
+    coordinator_clean = {
+        "tematy_lekcji": [
+            {"data": past_2_days, "przedmiot": "Matematyka", "numer": 1, "obecnosc": "ob"},
+        ],
+        "frekwencja": [],
+        "frekwencja_stat": {"procent_semestr": 100.0},
+    }
+    prompt_clean = "Frekwencja: {frekwencja}\nNieobecności: {nieobecnosci}"
+    out_clean = _substitute_prompt_tags(prompt_clean, coordinator_clean, today.strftime("%Y-%m-%d"), "Hubert")
+    assert "100.0%" in out_clean
+    assert "Brak spóźnień i nieobecności w wybranym okresie" in out_clean
 
 
 

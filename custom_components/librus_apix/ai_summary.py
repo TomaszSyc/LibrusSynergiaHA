@@ -177,6 +177,107 @@ def _format_notes(coordinator_data: dict, days: int = 7) -> str:
     return "\n".join(wyniki) if wyniki else "Brak uwag w wybranym okresie"
 
 
+def _format_attendance_frequency(coordinator_data: dict, days: int = 7) -> str:
+    """Wylicz procent frekwencji w ostatnich `days` dniach (domyślnie 7)."""
+    from datetime import date, timedelta
+    today = date.today()
+    cutoff = today - timedelta(days=days)
+
+    tematy = coordinator_data.get("tematy_lekcji") or []
+    lekcje_w_okresie = []
+    for l in tematy:
+        d = _parse_date(l.get("data"))
+        if d and d >= cutoff:
+            lekcje_w_okresie.append(l)
+
+    # 1. Sprawdzenie, czy zrealizowane lekcje zawierają odnotowaną obecność (ob, nb, sp, u, zw)
+    z_symbolem = [l for l in lekcje_w_okresie if l.get("obecnosc")]
+    if z_symbolem:
+        obecne = [l for l in z_symbolem if (l.get("obecnosc") or "").lower() in ("ob", "wy", "obecność")]
+        proc = round(100.0 * len(obecne) / len(z_symbolem), 1)
+        return f"{proc}% ({len(obecne)}/{len(z_symbolem)} zrealizowanych lekcji)"
+
+    # 2. Sprawdzenie wpisów nieobecności w module frekwencji dla tego okresu
+    frekwencja = coordinator_data.get("frekwencja") or []
+    nieobecnosci_w_okresie = []
+    for f in frekwencja:
+        d = _parse_date(f.get("data"))
+        if d and d >= cutoff:
+            sym = (f.get("symbol") or "").lower()
+            if sym not in ("", "ob", "wy", "obecność"):
+                nieobecnosci_w_okresie.append(f)
+
+    # Jeśli mamy zrealizowane lekcje (ale bez kolumny obecności), odejmujemy opuszczone lekcje z modułu frekwencji
+    if lekcje_w_okresie:
+        total = len(lekcje_w_okresie)
+        nb_count = len(nieobecnosci_w_okresie)
+        ob_count = max(0, total - nb_count)
+        proc = round(100.0 * ob_count / total, 1)
+        return f"{proc}% ({ob_count}/{total} lekcji)"
+
+    # 3. Jeśli brak odnotowanych nieobecności w okresie
+    if not nieobecnosci_w_okresie:
+        return "100.0% (brak opuszczonych lekcji w wybranym okresie)"
+
+    return f"Odnotowano {len(nieobecnosci_w_okresie)} opuszczonych lekcji w wybranym okresie"
+
+
+def _format_absences(coordinator_data: dict, days: int = 7) -> str:
+    """Formatuj spóźnienia i nieobecności z ostatnich `days` dni (domyślnie 7)."""
+    from datetime import date, timedelta
+    today = date.today()
+    cutoff = today - timedelta(days=days)
+
+    wyniki = []
+    seen = set()
+
+    # 1. Wpisy z modułu frekwencji
+    frekwencja = coordinator_data.get("frekwencja") or []
+    for f in frekwencja:
+        d = _parse_date(f.get("data"))
+        if not d or d < cutoff:
+            continue
+        sym = (f.get("symbol") or "").lower()
+        if sym in ("", "ob", "wy", "obecność"):
+            continue
+
+        typ = f.get("typ") or sym
+        przedmiot = f.get("przedmiot") or ""
+        godzina = f.get("godzina")
+        godz_str = f", lekcja {godzina}" if godzina else ""
+        przedmiot_str = f" ({przedmiot})" if przedmiot else ""
+        data_str = d.strftime("%Y-%m-%d")
+
+        key = (data_str, godzina, przedmiot, sym)
+        if key not in seen:
+            seen.add(key)
+            wyniki.append(f"- {data_str}{godz_str}{przedmiot_str}: {typ}")
+
+    # 2. Wpisy ze zrealizowanych lekcji (tematy_lekcji)
+    tematy = coordinator_data.get("tematy_lekcji") or []
+    for l in tematy:
+        d = _parse_date(l.get("data"))
+        if not d or d < cutoff:
+            continue
+        sym = (l.get("obecnosc") or "").lower()
+        if sym in ("", "ob", "wy", "obecność"):
+            continue
+
+        opis = l.get("obecnosc_opis") or sym
+        przedmiot = l.get("przedmiot") or ""
+        numer = l.get("numer")
+        nr_str = f", lekcja {numer}" if numer else ""
+        przedmiot_str = f" ({przedmiot})" if przedmiot else ""
+        data_str = d.strftime("%Y-%m-%d")
+
+        key = (data_str, numer, przedmiot, sym)
+        if key not in seen:
+            seen.add(key)
+            wyniki.append(f"- {data_str}{nr_str}{przedmiot_str}: {opis}")
+
+    return "\n".join(wyniki) if wyniki else "Brak spóźnień i nieobecności w wybranym okresie"
+
+
 def _substitute_prompt_tags(prompt: str, coordinator_data: dict, dzisiejsza_data: str, imie: str) -> str:
     """Podmień tagi dynamiczne w prompcie z obsługą parametrów dni {tag:X} (domyślnie 7 dni)."""
     # 1. Tagi parametryczne
@@ -200,19 +301,26 @@ def _substitute_prompt_tags(prompt: str, coordinator_data: dict, dzisiejsza_data
         lambda m: _format_notes(coordinator_data, int(m.group(1)) if m.group(1) else 7),
         prompt,
     )
+    prompt = re.sub(
+        r"\{frekwencja(?::(\d+))?\}",
+        lambda m: _format_attendance_frequency(coordinator_data, int(m.group(1)) if m.group(1) else 7),
+        prompt,
+    )
+    prompt = re.sub(
+        r"\{nieobecnosci(?::(\d+))?\}",
+        lambda m: _format_absences(coordinator_data, int(m.group(1)) if m.group(1) else 7),
+        prompt,
+    )
 
-    # 2. Tagi stałe
-    frekwencja = coordinator_data.get("frekwencja_stat") or {}
-    rodzaje_frekwencji = frekwencja.get("rodzaje") or {}
-    nieobecnosci = {k: v for k, v in rodzaje_frekwencji.items() if str(k).lower() != "obecność"}
-    frekwencja_str = str(frekwencja.get("procent_semestr", "Brak danych"))
-    nieobecnosci_str = json.dumps(nieobecnosci) if nieobecnosci else "Brak spóźnień i nieobecności"
+    # 2. Tagi stałe / semestralne
+    frekwencja_stat = coordinator_data.get("frekwencja_stat") or {}
+    procent_semestr = frekwencja_stat.get("procent_semestr")
+    procent_semestr_str = f"{procent_semestr}%" if procent_semestr is not None else "Brak danych"
 
     prompt = (
         prompt.replace("{dzisiejsza_data}", dzisiejsza_data)
         .replace("{imie}", imie)
-        .replace("{frekwencja}", frekwencja_str)
-        .replace("{nieobecnosci}", nieobecnosci_str)
+        .replace("{frekwencja_semestr}", procent_semestr_str)
     )
 
     return prompt
