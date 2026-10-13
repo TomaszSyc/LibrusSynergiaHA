@@ -1,6 +1,6 @@
 /**
  * Librus Synergia HA - Dashboard Generator (v3.0)
- * Generator panelu Lovelace dla Home Assistant w czystym JavaScript.
+ * Generator panelu Lovelace, podglądu na żywo i automatyzacji dla Home Assistant.
  */
 
 // Pomocnik do tworzenia prefiksu encji w stylu Home Assistant
@@ -331,7 +331,6 @@ function buildKidSubView(p, name, icon, panelUrl, options) {
     }
   ];
 
-  // Sekcja kolumny 2: Uwagi + Tematy lekcji + AI jeśli włączone
   const col2Cards = [];
   if (options.enableAi) {
     col2Cards.push(
@@ -388,7 +387,6 @@ function buildKidSubView(p, name, icon, panelUrl, options) {
 
   sections.push({ type: "grid", cards: col2Cards });
 
-  // Sekcja kolumny 3: Sprawdziany i terminarz + Plan tygodnia
   sections.push({
     type: "grid",
     cards: [
@@ -445,7 +443,236 @@ function generateDashboardConfig(students, panelUrl, options) {
   };
 }
 
-// Konwerter obiektu JavaScript do czytelnego YAML-a dla Home Assistanta
+// Generator Automatyzacji Powiadomień YAML
+function generateAutomationsYaml(targetEntity, selectedEvents, students, panelUrl) {
+  const notifyTarget = targetEntity.trim() || "notify.mobile_app_twoj_telefon";
+  const slug = students.length > 0 ? slugifyEntity(students[0].fullName) : "librus_uczen";
+  const automations = [];
+
+  if (selectedEvents.ocena) {
+    automations.push(`- alias: "Librus: Powiadomienie o nowej ocenie"
+  description: "Wysyła powiadomienie push, gdy pojawi się nowa ocena w Librusie"
+  mode: queued
+  trigger:
+    - platform: event
+      event_type: librus_apix_nowa_ocena
+  action:
+    - service: ${notifyTarget}
+      data:
+        title: "🎓 {{ trigger.event.data.uczen }} - nowa ocena {{ trigger.event.data.ocena }}"
+        message: >-
+          {{ trigger.event.data.przedmiot }}
+          Ocena: {{ trigger.event.data.ocena }}
+          Kategoria: {{ trigger.event.data.kategoria }}
+          Nauczyciel: {{ trigger.event.data.nauczyciel }}
+        data:
+          clickAction: "/${panelUrl}/"
+          url: "/${panelUrl}/"`);
+  }
+
+  if (selectedEvents.wiadomosc) {
+    automations.push(`- alias: "Librus: Powiadomienie o nowej wiadomości"
+  description: "Wysyła powiadomienie push o nadejściu nowej wiadomości w Librusie"
+  mode: single
+  trigger:
+    - platform: event
+      event_type: librus_apix_nowa_wiadomosc
+  action:
+    - service: ${notifyTarget}
+      data:
+        title: "📬 {{ trigger.event.data.uczen }}: nowa wiadomość"
+        message: >-
+          Od: {{ trigger.event.data.nadawca }}
+          Temat: {{ trigger.event.data.temat }}
+        data:
+          clickAction: "/${panelUrl}/"
+          url: "/${panelUrl}/"`);
+  }
+
+  if (selectedEvents.uwaga) {
+    automations.push(`- alias: "Librus: Powiadomienie o nowej uwadze"
+  description: "Wysyła powiadomienie push, gdy nauczyciel wpisze nową uwagę"
+  mode: single
+  trigger:
+    - platform: event
+      event_type: librus_apix_nowa_uwaga
+  action:
+    - service: ${notifyTarget}
+      data:
+        title: >-
+          {{ {'pozytywna': '🟢', 'negatywna': '🔴'}.get(trigger.event.data.rodzaj, 'ℹ️') }}
+          {{ trigger.event.data.uczen }} - uwaga {{ trigger.event.data.rodzaj }}
+        message: "{{ trigger.event.data.tresc }} ({{ trigger.event.data.nauczyciel }})"
+        data:
+          clickAction: "/${panelUrl}/"
+          url: "/${panelUrl}/"`);
+  }
+
+  if (selectedEvents.nieobecnosc) {
+    automations.push(`- alias: "Librus: Powiadomienie o nieobecności lub spóźnieniu"
+  description: "Powiadamia o zmianie frekwencji ucznia"
+  mode: single
+  trigger:
+    - platform: event
+      event_type: librus_apix_nowa_nieobecnosc
+  action:
+    - service: ${notifyTarget}
+      data:
+        title: "🚸 {{ trigger.event.data.uczen }}: {{ trigger.event.data.opis or trigger.event.data.rodzaj }}"
+        message: >-
+          {{ trigger.event.data.dzien_tygodnia }} {{ trigger.event.data.data }},
+          lekcja {{ trigger.event.data.numer }}: {{ trigger.event.data.przedmiot }}
+        data:
+          clickAction: "/${panelUrl}/"
+          url: "/${panelUrl}/"`);
+  }
+
+  if (selectedEvents.zadanie) {
+    automations.push(`- alias: "Librus: Powiadomienie o nowym zadaniu domowym"
+  description: "Powiadamia o nowo zadanym zadaniu domowym w Librusie"
+  mode: single
+  trigger:
+    - platform: event
+      event_type: librus_apix_nowe_zadanie
+  action:
+    - service: ${notifyTarget}
+      data:
+        title: "📚 {{ trigger.event.data.uczen }}: nowe zadanie"
+        message: "{{ trigger.event.data.przedmiot }} ({{ trigger.event.data.kategoria }}), termin: {{ trigger.event.data.termin }}"
+        data:
+          clickAction: "/${panelUrl}/"
+          url: "/${panelUrl}/"`);
+  }
+
+  if (selectedEvents.zdarzenie) {
+    automations.push(`- alias: "Librus: Powiadomienie o nowym sprawdzianie w terminarzu"
+  description: "Wysyła powiadomienie o dodanym sprawdzianie lub klasówce"
+  mode: single
+  trigger:
+    - platform: event
+      event_type: librus_apix_nowe_zdarzenie
+  action:
+    - service: ${notifyTarget}
+      data:
+        title: "📅 {{ trigger.event.data.uczen }}: {{ trigger.event.data.tytul }}"
+        message: "{{ trigger.event.data.przedmiot }} na dzień {{ trigger.event.data.data }} {{ trigger.event.data.godzina }}"
+        data:
+          clickAction: "/${panelUrl}/"
+          url: "/${panelUrl}/"`);
+  }
+
+  if (selectedEvents.aiWeekly) {
+    automations.push(`- alias: "Librus: Piątkowy Raport AI na telefon"
+  description: "Generuje tygodniowy raport AI w piątek o 17:00 i wysyła push z linkiem do panelu"
+  mode: single
+  trigger:
+    - platform: time
+      at: "17:00:00"
+  condition:
+    - condition: time
+      weekday:
+        - fri
+  action:
+    - service: button.press
+      target:
+        entity_id: button.${slug}_generuj_podsumowanie_ai
+    - wait_for_trigger:
+        - platform: state
+          entity_id: sensor.${slug}_podsumowanie_ai_rodzic
+      timeout: "00:02:00"
+      continue_on_timeout: false
+    - service: ${notifyTarget}
+      data:
+        title: "🤖 Librus AI - Raport Tygodniowy"
+        message: "{{ states('sensor.${slug}_podsumowanie_ai_rodzic') }}"
+        data:
+          clickAction: "/${panelUrl}/"
+          url: "/${panelUrl}/"`);
+  }
+
+  if (selectedEvents.aiMessages) {
+    automations.push(`- alias: "Librus: Streszczenie Nowych Wiadomości AI"
+  description: "Analizuje nowo odebrane wiadomości przez AI i wysyła push ze skrótem"
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: sensor.${slug}_wiadomosci
+  condition:
+    - condition: template
+      value_template: "{{ trigger.to_state.state | int > trigger.from_state.state | int }}"
+  action:
+    - service: button.press
+      target:
+        entity_id: button.${slug}_generuj_podsumowanie_wiadomosci_ai
+    - wait_for_trigger:
+        - platform: state
+          entity_id: sensor.${slug}_podsumowanie_wiadomosci_ai_rodzic
+      timeout: "00:02:00"
+      continue_on_timeout: false
+    - service: ${notifyTarget}
+      data:
+        title: "📬 Librus AI - Podsumowanie Wiadomości"
+        message: "{{ states('sensor.${slug}_podsumowanie_wiadomosci_ai_rodzic') }}"
+        data:
+          clickAction: "/${panelUrl}/"
+          url: "/${panelUrl}/"`);
+  }
+
+  return automations.join("\n\n");
+}
+
+// Presety Promptów AI
+const PROMPT_PRESETS = {
+  weeklyParent: `Jesteś życzliwym, mądrym asystentem rodzica. Przeanalizuj wyniki szkolne ucznia o imieniu {imie} z ostatnich dni i przygotuj eleganckie podsumowanie tygodnia dla rodzica.
+Dzisiejsza data: {dzisiejsza_data}.
+
+Dane z dziennika:
+- Otrzymane oceny: {oceny}
+- Frekwencja w semestrze: {frekwencja_semestr}
+- Nieobecności i spóźnienia: {nieobecnosci}
+- Nadchodzące sprawdziany i kartkówki: {sprawdziany}
+- Zadania domowe: {zadania}
+- Uwagi od nauczycieli: {uwagi}
+
+Zasady raportu:
+1. Zacznij od serdecznego wstępu i ogólnej oceny minionego tygodnia.
+2. Wyróżnij sukcesy i pochwal dobre oceny.
+3. Jeśli pojawiły się słabsze oceny, uwagi lub zbliżają się trudne sprawdziany, wskaż je taktownie jako obszary do wspólnego wsparcia.
+4. Zadbaj o przejrzyste formatowanie w punktach z ikonami emoji.`,
+
+  weeklyStudent: `Cześć {imie}! Jesteś wspaniałym uczniem, a ja jestem Twoim osobistym asystentem nauki. Oto podsumowanie Twojego tygodnia w szkole (dzisiaj jest {dzisiejsza_data}):
+
+Twoje wyniki:
+- Twoje ostatnie oceny: {oceny}
+- Twoja frekwencja w semestrze: {frekwencja_semestr}
+- Zapowiedziane sprawdziany: {sprawdziany}
+- Zadania domowe: {zadania}
+- Uwagi ze szkoły: {uwagi}
+
+Napisz do {imie} krótki, motywujący list:
+1. Pogratuluj zaangażowania i pochwal za każdą dobrą ocenę!
+2. Przypomnij w przyjazny sposób o zbliżających się sprawdzianach, żeby nauka poszła gładko.
+3. Dodaj dawkę pozytywnej energii na nadchodzący weekend! Użyj radosnych emoji.`,
+
+  messagesParent: `Przeanalizuj wiadomości ze szkoły ucznia {imie} na dzień {dzisiejsza_data}.
+Skrzynka wiadomości:
+{wiadomosci}
+
+Przygotuj dla rodzica zwięzłe, przejrzyste podsumowanie:
+1. Wyróżnij najważniejsze informacje wymagające uwagi rodzica (np. zebrania, terminy, zgody, opłaty).
+2. Jeśli w wiadomościach są zadania lub terminy dla ucznia, wypunktuj je z datami.
+3. Pomiń wiadomości archiwalne niezwiązane z bieżącym tygodniem.`,
+
+  messagesStudent: `Przeanalizuj wiadomości ze szkoły dla ucznia {imie} na dzień {dzisiejsza_data}:
+{wiadomosci}
+
+Przygotuj dla {imie} prostą listę zadań i ważnych ogłoszeń w punktach:
+- O czym musisz pamiętać?
+- Jakie terminy się zbliżają?
+Pisz prosto, bezpośrednio i zwięźle.`
+};
+
+// Konwerter obiektu JavaScript do czytelnego YAML-a
 function toYaml(obj, indent = 0) {
   const pad = "  ".repeat(indent);
 
@@ -454,13 +681,11 @@ function toYaml(obj, indent = 0) {
   if (typeof obj === "number") return String(obj);
 
   if (typeof obj === "string") {
-    // Jeżeli string zawiera nowe linie, sformatuj jako blokowy literal '|'
     if (obj.includes("\n")) {
       const lines = obj.split("\n");
       const blockPad = "  ".repeat(indent + 1);
       return "|\n" + lines.map(line => line.length > 0 ? blockPad + line : "").join("\n");
     }
-    // Jeśli zawiera znaki specjalne YAML (:, {, }, [, ], ', ", #, etc.)
     if (/[:#{}[\],&*?|<>=!%@`]/.test(obj) || obj.trim() !== obj) {
       return JSON.stringify(obj);
     }
@@ -473,7 +698,6 @@ function toYaml(obj, indent = 0) {
       const itemPad = "  ".repeat(indent);
       if (typeof item === "object" && item !== null && !Array.isArray(item)) {
         const itemYaml = toYaml(item, indent + 1);
-        // Pierwszy klucz po myślniku
         const trimmed = itemYaml.trimStart();
         return `${itemPad}- ${trimmed}`;
       }
@@ -518,5 +742,7 @@ window.LibrusGenerator = {
   getShortName,
   detectGenderIcon,
   generateDashboardConfig,
+  generateAutomationsYaml,
+  PROMPT_PRESETS,
   toYaml
 };
