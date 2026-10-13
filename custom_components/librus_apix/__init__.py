@@ -71,6 +71,19 @@ def _rodzaj_zdarzenia(tytul: str, href: str) -> str:
     if "kartkówka" in t or "kartkowka" in t:
         return "kartkowka"
     return "wydarzenie"
+
+
+def is_exam_event(event: dict) -> bool:
+    """Sprawdz czy wpis terminarza to sprawdzian / kartkowka / klasowka."""
+    if not isinstance(event, dict):
+        return False
+    rodzaj = (event.get("rodzaj") or "").lower()
+    if rodzaj in ("sprawdzian", "kartkowka"):
+        return True
+    t = (event.get("tytul") or "").lower()
+    return any(x in t for x in ("sprawdzian", "kartkówka", "kartkowka", "klasówka", "klasowka", "praca klasowa", "test"))
+
+
 # Linia "Klucz: wartosc" w opisie oceny (Kategoria:, Data:, Nauczyciel: ...)
 _KLUCZ_OPISU = re.compile(r"^[A-ZĄĆĘŁŃÓŚŹŻ][\w .()/-]{0,40}: ")
 

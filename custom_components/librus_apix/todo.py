@@ -13,6 +13,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import DOMAIN
 from .sensor import _device_info
+from . import is_exam_event
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -141,10 +142,8 @@ class LibrusStudyTodoList(CoordinatorEntity, TodoListEntity):
         items = []
         today = date.today()
         
-        typy_testow = ["Sprawdzian", "Kartkówka", "Klasówka", "Praca klasowa"]
-        
         for z in terminarz:
-            if z.get("tytul") not in typy_testow:
+            if not is_exam_event(z):
                 continue
                 
             data_str = z.get("data", "")

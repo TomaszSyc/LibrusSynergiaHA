@@ -10,6 +10,7 @@ from .ai_prompts import (
     DEFAULT_PROMPT_MESSAGES_PARENT,
     DEFAULT_PROMPT_MESSAGES_STUDENT,
 )
+from . import is_exam_event
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -102,7 +103,6 @@ def _format_exams(coordinator_data: dict, days: int = 7) -> str:
     max_date = today + timedelta(days=days)
     terminarz = coordinator_data.get("terminarz") or []
 
-    test_types = ("sprawdzian", "kartkowka", "klasowka", "praca klasowa", "test")
     wyniki = []
 
     for ev in terminarz:
@@ -110,9 +110,7 @@ def _format_exams(coordinator_data: dict, days: int = 7) -> str:
         if not d or not (today <= d <= max_date):
             continue
 
-        rodzaj = (ev.get("rodzaj") or "").lower()
-        tytul = (ev.get("tytul") or "").lower()
-        if any(t in rodzaj or t in tytul for t in test_types):
+        if is_exam_event(ev):
             przedmiot = ev.get("przedmiot") or "Zadanie"
             tytul_oryg = ev.get("tytul") or "Sprawdzian"
             dzien_tyg = ev.get("tydzien") or ""

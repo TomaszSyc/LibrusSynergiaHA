@@ -185,3 +185,47 @@ async def test_coordinator_async_init_study_store():
 
     assert coordinator.study_store is mock_store
     assert coordinator.study_completed_uids == {"uid_abc", "uid_xyz"}
+
+
+def test_study_todo_exam_case_insensitive_and_descriptive_titles():
+    """Weryfikacja wykrywania sprawdzianów o różnej wielkości liter i opisowych tytułach."""
+    from datetime import timedelta
+    from custom_components.librus_apix.todo import LibrusStudyTodoList
+    from custom_components.librus_apix.binary_sensor import LibrusStudyCompletedSensor
+    from custom_components.librus_apix import is_exam_event
+
+    assert is_exam_event({"tytul": "Sprawdzian"}) is True
+    assert is_exam_event({"tytul": "sprawdzian z historii"}) is True
+    assert is_exam_event({"tytul": "Kartkówka zapowiedziana"}) is True
+    assert is_exam_event({"tytul": "test semestralny"}) is True
+    assert is_exam_event({"tytul": "praca klasowa - dział 1"}) is True
+    assert is_exam_event({"tytul": "dowolny tytul", "rodzaj": "sprawdzian"}) is True
+    assert is_exam_event({"tytul": "Wycieczka klasowa", "rodzaj": "wydarzenie"}) is False
+
+    today = date.today()
+    tomorrow_str = (today + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    coordinator = MagicMock()
+    coordinator.data = {
+        "terminarz": [
+            {"tytul": "sprawdzian z biologii", "przedmiot": "Biologia", "data": tomorrow_str},
+            {"tytul": "Klasówka - trygonometria", "przedmiot": "Matematyka", "data": tomorrow_str},
+            {"tytul": "Niezwiązany wpis", "rodzaj": "sprawdzian", "przedmiot": "Chemia", "data": tomorrow_str},
+            {"tytul": "Dzień sportu", "rodzaj": "dzien_wolny", "przedmiot": "WF", "data": tomorrow_str},
+        ]
+    }
+    coordinator.study_completed_uids = set()
+
+    config_entry = MagicMock(options={"days_before_exam_study": 2})
+    todo = LibrusStudyTodoList(coordinator, config_entry)
+    sensor = LibrusStudyCompletedSensor(coordinator, config_entry)
+
+    items = todo.todo_items
+    assert len(items) == 3
+    summaries = [it.summary for it in items]
+    assert "Nauka: Biologia (sprawdzian z biologii)" in summaries
+    assert "Nauka: Matematyka (Klasówka - trygonometria)" in summaries
+    assert "Nauka: Chemia (Niezwiązany wpis)" in summaries
+    assert sensor.is_on is False
+    assert sensor.extra_state_attributes["sprawdziany_do_nauki"] == 3
+
