@@ -1282,45 +1282,48 @@ class LibrusApiClient:
                 date_to = today.strftime("%Y-%m-%d")
 
                 def _fetch_all_pages():
-                    data0 = {
-                        "data1": date_from,
-                        "data2": date_to,
-                        "filtruj_id_przedmiotu": -1,
-                        "numer_strony1001": 0,
-                        "porcjowanie_pojemnik1001": 1001,
-                    }
-                    html0 = client.post(client.COMPLETED_LESSONS_URL, data=data0).text
-                    from bs4 import BeautifulSoup
-                    import re
-                    max_pages = 0
+                    last_post = {}
+                    orig_post = client.post
+                    def _caching_post(url, data=None, **kwargs):
+                        if url == client.COMPLETED_LESSONS_URL and data and data.get("numer_strony1001") == 0:
+                            if "page_0" in last_post:
+                                return last_post["page_0"]
+                            resp = orig_post(url, data=data, **kwargs)
+                            last_post["page_0"] = resp
+                            return resp
+                        return orig_post(url, data=data, **kwargs)
+
                     try:
-                        soup = BeautifulSoup(html0, "lxml")
-                        pages_elem = soup.select_one("div.pagination > span")
-                        if pages_elem:
-                            txt = pages_elem.text.replace("\xa0", "")
-                            m = re.search(r"z(\d+)", txt)
-                            if m:
-                                max_pages = int(m.group(1))
-                    except Exception:
-                        max_pages = 0
+                        client.post = _caching_post
+                        from librus_apix.completed_lessons import get_max_page_number
+                        try:
+                            max_pages = get_max_page_number(client, date_from, date_to)
+                        except Exception:
+                            max_pages = 0
 
-                    lessons = []
-                    seen = set()
-                    for lesson in _parse_completed_lessons(html0):
-                        key = (lesson["data"], lesson["numer"], lesson["przedmiot"], lesson["temat"])
-                        if key not in seen:
-                            seen.add(key)
-                            lessons.append(lesson)
-
-                    for page in range(1, min(max_pages, 9) + 1):
-                        data_p = dict(data0, numer_strony1001=page)
-                        html_p = client.post(client.COMPLETED_LESSONS_URL, data=data_p).text
-                        for lesson in _parse_completed_lessons(html_p):
-                            key = (lesson["data"], lesson["numer"], lesson["przedmiot"], lesson["temat"])
-                            if key not in seen:
+                        lessons = []
+                        seen = set()
+                        for page in range(min(max_pages, 9) + 1):
+                            resp = client.post(
+                                client.COMPLETED_LESSONS_URL,
+                                data={
+                                    "data1": date_from,
+                                    "data2": date_to,
+                                    "filtruj_id_przedmiotu": -1,
+                                    "numer_strony1001": page,
+                                    "porcjowanie_pojemnik1001": 1001,
+                                },
+                            )
+                            html = resp.text if hasattr(resp, "text") else str(resp)
+                            for lesson in _parse_completed_lessons(html):
+                                key = (lesson["data"], lesson["numer"], lesson["przedmiot"], lesson["temat"])
+                                if key in seen:
+                                    continue
                                 seen.add(key)
                                 lessons.append(lesson)
-                    return lessons
+                        return lessons
+                    finally:
+                        client.post = orig_post
 
                 loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(None, _fetch_all_pages)
