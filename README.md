@@ -764,8 +764,14 @@ Integracja udostępnia dedykowaną usługę `librus_apix.get_message` pozwalają
 
 ## ⚙️ Optymalizacja i Bezpieczeństwo
 
-### ⚠️ Ważne: Optymalizacja bazy danych (Recorder)
-Niektóre sensory przechowują potężne struktury JSON. Zaleca się wykluczenie ich z zapisu do historii w pliku `configuration.yaml`:
+### ⚠️ Ważne: Optymalizacja bazy danych (Recorder) i ostrzeżenie 32 KB
+
+Sensory integracji przechowują obszerne struktury danych (pełne plany lekcji, historię ocen ze wszystkich przedmiotów czy pełne raporty AI). Jeśli sensory nie zostaną wykluczone z zapisu historii, w logach Home Assistanta może pojawić się ostrzeżenie:
+
+> `Rejestrator: homeassistant.components.recorder.db_schema`  
+> `Event data for call_service exceed maximum size of 32768 bytes. This can cause database performance issues; Event data will not be stored`
+
+Ostrzeżenie to oznacza, że rozmiar atrybutów encji przekracza maksymalny rozmiar pojedynczego wpisu bazy danych HA (32 KB). Aby zapobiec nadmiernemu rozrostowi bazy danych i wyeliminować ten komunikat, dodaj poniższe wykluczenia do pliku `configuration.yaml`:
 
 ```yaml
 recorder:
@@ -779,7 +785,11 @@ recorder:
       - sensor.librus_*_oceny
       - sensor.librus_*_tematy_lekcji
       - sensor.librus_*_frekwencja
+      - sensor.librus_*_uwagi
+      - sensor.librus_*_podsumowanie_ai_*
+      - sensor.librus_*_podsumowanie_wiadomosci_ai_*
 ```
+*(Po zapisaniu pliku należy zrestartować Home Assistant).*
 
 ### 📝 Logi
 
