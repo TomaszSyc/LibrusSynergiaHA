@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Librus Synergia HA – Kreator Dashboardu & Dokumentacja v3.0</title>
+  <meta name="description" content="Oficjalna strona integracji Librus Synergia dla Home Assistant z interaktywnym generatorem paneli Lovelace i obsługą Asystenta AI.">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
+</head>
+<body>
+
+  <!-- Nawigacja -->
+  <header class="navbar">
+    <div class="nav-container">
+      <a href="#" class="brand">
+        <span class="brand-icon">🎓</span>
+        <span class="brand-title">Librus Synergia HA</span>
+        <span class="brand-badge">v3.0.0-dev</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#nowosci" class="nav-link">Nowości v3.0</a>
+        <a href="#generator" class="nav-link">Generator Panelu</a>
+        <a href="#instrukcja" class="nav-link">Instrukcja</a>
+        <a href="https://github.com/procaktomasz/LibrusSynergiaHA" target="_blank" rel="noopener noreferrer" class="btn-github">
+          <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+          <span>GitHub</span>
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-container">
+      <div class="pill-tag">
+        <span>✨ Wersja 3.0.0 dostępna w gałęzi dev</span>
+      </div>
+      <h1 class="hero-title">
+        Inteligentny Asystent Szkolny <br>
+        dla <span class="gradient-text">Home Assistant</span>
+      </h1>
+      <p class="hero-description">
+        Monitoruj oceny, frekwencję, plan lekcji z zastępstwami, uwagi oraz wiadomości z Librus Synergia. 
+        Zintegruj podsumowania Sztucznej Inteligencji i wygeneruj gotowy panel Lovelace w kilka sekund bez pisania YAML-a!
+      </p>
+      <div class="hero-actions">
+        <a href="#generator" class="btn-primary">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          Stwórz Panel Dashboardu
+        </a>
+        <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=procaktomasz&repository=LibrusSynergiaHA&category=integration" target="_blank" rel="noopener noreferrer" class="btn-secondary">
+          <span>📦 Zainstaluj przez HACS</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Nowości v3.0 -->
+  <section id="nowosci" class="features">
+    <div class="section-header">
+      <span class="section-badge">Przełomowe funkcje</span>
+      <h2 class="section-title">Co nowego w wersji 3.0?</h2>
+      <p class="section-subtitle">Stworzona przez społeczność, dopracowana pod kątem niezawodności i nowoczesnego wyglądu.</p>
+    </div>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon-wrapper purple">🤖</div>
+        <h3 class="feature-title">Asystent AI</h3>
+        <p class="feature-text">
+          Generowanie spersonalizowanych raportów z postępów na koniec tygodnia (osobno dla rodzica i ucznia) oraz zwięzłych streszczeń wiadomości ze szkoły.
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon-wrapper green">🎮</div>
+        <h3 class="feature-title">Gamifikacja Nauki (To-Do)</h3>
+        <p class="feature-text">
+          Automatyczna interaktywna lista przygotowań przed sprawdzianami. Czujnik "Nauka Odrobiona" pozwala zablokować konsolę lub TV dopóki zadania nie zostaną zaliczone!
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon-wrapper">🧠</div>
+        <h3 class="feature-title">Adaptacyjny Cache</h3>
+        <p class="feature-text">
+          Inteligentny harmonogram odpytywania Librusa i trwały cache wiadomości chroniący przed porannymi błędami <code>500 Server Error</code> serwerów dziennika.
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon-wrapper amber">⚡</div>
+        <h3 class="feature-title">Błyskawiczne Zdarzenia</h3>
+        <p class="feature-text">
+          Natywne zdarzenia Home Assistant dla nowych ocen, uwag, wiadomości i zadań. Koniec ze skomplikowanymi szablonami w automatyzacjach powiadomień na telefon.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Generator Panelu -->
+  <section id="generator" class="generator-section">
+    <div class="section-container">
+      <div class="section-header">
+        <span class="section-badge">Interaktywny Kreator</span>
+        <h2 class="section-title">Wygeneruj Gotowy Panel „Szkoła”</h2>
+        <p class="section-subtitle">Wpisz dane swoich uczniów, wybierz kafelki i skopiuj gotowy kod dashboardu do wklejenia w Home Assistant.</p>
+      </div>
+
+      <div class="generator-box">
+        <!-- Krok 1: Uczniowie -->
+        <div class="step-card">
+          <div class="step-header">
+            <span class="step-number">1</span>
+            <h3 class="step-title">Twoi uczniowie</h3>
+          </div>
+          <p class="feature-text" style="margin-bottom: 1rem;">
+            Wpisz imię i nazwisko każdego dziecka dokładnie tak, jak figuruje w Librusie / nazwie urządzenia HA (np. <em>Jan Kowalski</em>).
+          </p>
+
+          <div id="studentsList" class="students-list">
+            <!-- Wiersze generowane dynamicznie w JS -->
+          </div>
+
+          <button type="button" id="btnAddStudent" class="btn-add-student">
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Dodaj kolejnego ucznia
+          </button>
+        </div>
+
+        <!-- Krok 2: Opcje i Moduły -->
+        <div class="step-card">
+          <div class="step-header">
+            <span class="step-number">2</span>
+            <h3 class="step-title">Zawartość i moduły panelu</h3>
+          </div>
+
+          <div class="options-grid">
+            <label class="option-checkbox-card">
+              <input type="checkbox" id="optAi" checked>
+              <div class="option-info">
+                <span class="option-title">🤖 Moduł Sztucznej Inteligencji</span>
+                <span class="option-desc">Karty raportu tygodniowego postępów oraz podsumowania wiadomości szkolnych.</span>
+              </div>
+            </label>
+
+            <label class="option-checkbox-card">
+              <input type="checkbox" id="optStudyTodo" checked>
+              <div class="option-info">
+                <span class="option-title">🎮 Gamifikacja To-Do (Przygotowanie)</span>
+                <span class="option-desc">Lista kontrolna nauki przed sprawdzianami i status odrobionej nauki.</span>
+              </div>
+            </label>
+
+            <label class="option-checkbox-card">
+              <input type="checkbox" id="optUwagi" checked>
+              <div class="option-info">
+                <span class="option-title">🚨 Uwagi o zachowaniu</span>
+                <span class="option-desc">Kafle i lista uwag pozytywnych, negatywnych oraz neutralnych.</span>
+              </div>
+            </label>
+          </div>
+
+          <div style="margin-top: 1.5rem; max-width: 320px;">
+            <div class="input-group">
+              <label for="inputPanelUrl">Adres (URL) panelu w Home Assistant</label>
+              <input type="text" id="inputPanelUrl" class="form-control" value="szkola-librus">
+              <small style="color: var(--text-muted); font-size: 0.75rem;">Np. <code>szkola-librus</code> (otworzy się pod <code>/szkola-librus</code>)</small>
+            </div>
+          </div>
+        </div>
+
+        <!-- Przycisk Generuj -->
+        <div class="action-box">
+          <button type="button" id="btnGenerate" class="btn-generate">
+            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+            </svg>
+            Wygeneruj Gotowy Kod Panelu
+          </button>
+        </div>
+
+        <!-- Wynik Generatora -->
+        <div id="resultBox" class="result-box">
+          <div class="result-toolbar">
+            <div class="result-title">
+              <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              <span>Kod konfiguracji Dashboardu Lovelace</span>
+            </div>
+            <div class="result-actions">
+              <button type="button" id="btnToggleFormat" class="btn-tool">Format: YAML</button>
+              <button type="button" id="btnCopy" class="btn-tool primary">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
+                </svg>
+                Kopiuj do schowka
+              </button>
+              <button type="button" id="btnDownload" class="btn-tool">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                Pobierz .yaml
+              </button>
+            </div>
+          </div>
+          <div class="code-container">
+            <pre><code id="outputCode"></code></pre>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Instrukcja instalacji dashboardu w HA -->
+  <section id="instrukcja" class="instructions-section">
+    <div class="section-header">
+      <span class="section-badge">Instrukcja wklejenia</span>
+      <h2 class="section-title">Jak dodać panel w Home Assistant?</h2>
+      <p class="section-subtitle">Wystarczą 3 proste kroki, aby wkleić wygenerowany pulpit na swój system.</p>
+    </div>
+
+    <div class="steps-cards-grid">
+      <div class="inst-card">
+        <span class="inst-badge">1</span>
+        <h3 class="inst-title">Utwórz czysty pulpit</h3>
+        <p class="inst-desc">
+          W Home Assistant przejdź do <strong>Ustawienia → Pulpity → Dodaj pulpit</strong>, wybierz <em>"Nowy pulpit od zera"</em> i wpisz adres (np. <code>szkola-librus</code>).
+        </p>
+      </div>
+
+      <div class="inst-card">
+        <span class="inst-badge">2</span>
+        <h3 class="inst-title">Otwórz edytor kodu</h3>
+        <p class="inst-desc">
+          Otwórz nowo utworzony pulpit, kliknij ikonę ołówka <strong>(Edytuj)</strong> w prawym górnym rogu, następnie trzy kropki (⋮) i wybierz <strong>Edytor konfiguracji pomocniczej (Raw Configuration Editor)</strong>.
+        </p>
+      </div>
+
+      <div class="inst-card">
+        <span class="inst-badge">3</span>
+        <h3 class="inst-title">Wklej kod i zapisz</h3>
+        <p class="inst-desc">
+          Zastąp całą zawartość okna wygenerowanym powyżej kodem i kliknij <strong>Zapisz</strong>. Twój interaktywny panel szkolny jest gotowy do użytku!
+        </p>
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 2.5rem;">
+      <p style="color: var(--text-muted); font-size: 0.9rem;">
+        * Panel korzysta z kart <strong>Mushroom Cards</strong> (dostępnych w HACS → Frontend). Upewnij się, że masz je zainstalowane!
+      </p>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-container">
+      <div class="footer-links">
+        <a href="https://github.com/procaktomasz/LibrusSynergiaHA" target="_blank" rel="noopener noreferrer" class="footer-link">Repozytorium GitHub</a>
+        <a href="https://github.com/procaktomasz/LibrusSynergiaHA/issues" target="_blank" rel="noopener noreferrer" class="footer-link">Zgłoś problem (Issues)</a>
+        <a href="https://github.com/procaktomasz/LibrusSynergiaHA/blob/feature/v3.0-dev/LICENSE" target="_blank" rel="noopener noreferrer" class="footer-link">Licencja MIT</a>
+      </div>
+      <p>
+        Integracja <strong>Librus Synergia HA</strong> rozwija projekt pierwotnie stworzony przez <strong>LukMaverick</strong>.<br>
+        Warstwa komunikacyjna: biblioteka <code>librus-apix</code> autorstwa RustySnek.
+      </p>
+    </div>
+  </footer>
+
+  <!-- Powiadomienie Toast -->
+  <div id="toast" class="toast">
+    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+    </svg>
+    <span id="toastMessage">Skopiowano kod do schowka!</span>
+  </div>
+
+  <!-- Skrypty logiki generatora -->
+  <script src="generator.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      const studentsContainer = document.getElementById("studentsList");
+      const btnAddStudent = document.getElementById("btnAddStudent");
+      const btnGenerate = document.getElementById("btnGenerate");
+      const resultBox = document.getElementById("resultBox");
+      const outputCode = document.getElementById("outputCode");
+      const btnCopy = document.getElementById("btnCopy");
+      const btnDownload = document.getElementById("btnDownload");
+      const btnToggleFormat = document.getElementById("btnToggleFormat");
+      const toast = document.getElementById("toast");
+
+      let generatedConfigObj = null;
+      let currentFormat = "yaml"; // "yaml" lub "json"
+
+      // Domyślny uczeń na start
+      let students = [
+        { fullName: "Jan Kowalski", shortName: "Jan", icon: "mdi:face-man" }
+      ];
+
+      function renderStudents() {
+        studentsContainer.innerHTML = "";
+        students.forEach((st, idx) => {
+          const row = document.createElement("div");
+          row.className = "student-row";
+          row.innerHTML = `
+            <div class="input-group">
+              <label>Pełne Imię i Nazwisko</label>
+              <input type="text" class="form-control input-fullname" data-idx="${idx}" value="${st.fullName}" placeholder="np. Jan Kowalski">
+            </div>
+            <div class="input-group">
+              <label>Imię (etykieta)</label>
+              <input type="text" class="form-control input-shortname" data-idx="${idx}" value="${st.shortName}" placeholder="np. Jan">
+            </div>
+            <div class="input-group">
+              <label>Ikona</label>
+              <select class="form-control select-icon" data-idx="${idx}">
+                <option value="mdi:face-man" ${st.icon === 'mdi:face-man' ? 'selected' : ''}>Chłopiec</option>
+                <option value="mdi:face-woman" ${st.icon === 'mdi:face-woman' ? 'selected' : ''}>Dziewczynka</option>
+                <option value="mdi:account-school" ${st.icon === 'mdi:account-school' ? 'selected' : ''}>Uczeń</option>
+              </select>
+            </div>
+            <div>
+              ${students.length > 1 ? `
+                <button type="button" class="btn-icon-danger btn-remove" data-idx="${idx}" title="Usuń ucznia">
+                  &times;
+                </button>
+              ` : `<div></div>`}
+            </div>
+          `;
+          studentsContainer.appendChild(row);
+        });
+
+        // Event listenery dla edycji pól
+        document.querySelectorAll(".input-fullname").forEach(el => {
+          el.addEventListener("input", function(e) {
+            const idx = parseInt(e.target.dataset.idx, 10);
+            students[idx].fullName = e.target.value;
+            // Automatyczne podpowiadanie imienia i ikony
+            const shortName = window.LibrusGenerator.getShortName(e.target.value);
+            students[idx].shortName = shortName;
+            students[idx].icon = window.LibrusGenerator.detectGenderIcon(shortName);
+            
+            const shortInput = studentsContainer.querySelector(`.input-shortname[data-idx="${idx}"]`);
+            if (shortInput) shortInput.value = shortName;
+            const selectIcon = studentsContainer.querySelector(`.select-icon[data-idx="${idx}"]`);
+            if (selectIcon) selectIcon.value = students[idx].icon;
+          });
+        });
+
+        document.querySelectorAll(".input-shortname").forEach(el => {
+          el.addEventListener("input", function(e) {
+            const idx = parseInt(e.target.dataset.idx, 10);
+            students[idx].shortName = e.target.value;
+          });
+        });
+
+        document.querySelectorAll(".select-icon").forEach(el => {
+          el.addEventListener("change", function(e) {
+            const idx = parseInt(e.target.dataset.idx, 10);
+            students[idx].icon = e.target.value;
+          });
+        });
+
+        document.querySelectorAll(".btn-remove").forEach(el => {
+          el.addEventListener("click", function(e) {
+            const idx = parseInt(e.currentTarget.dataset.idx, 10);
+            students.splice(idx, 1);
+            renderStudents();
+          });
+        });
+      }
+
+      btnAddStudent.addEventListener("click", function() {
+        students.push({ fullName: "Anna Nowak", shortName: "Anna", icon: "mdi:face-woman" });
+        renderStudents();
+      });
+
+      renderStudents();
+
+      function updateCodeOutput() {
+        if (!generatedConfigObj) return;
+        if (currentFormat === "yaml") {
+          outputCode.textContent = "# Wygenerowano przez Kreator Librus Synergia HA\n" + window.LibrusGenerator.toYaml(generatedConfigObj);
+          btnToggleFormat.textContent = "Format: YAML (kliknij na JSON)";
+        } else {
+          outputCode.textContent = JSON.stringify(generatedConfigObj, null, 2);
+          btnToggleFormat.textContent = "Format: JSON (kliknij na YAML)";
+        }
+      }
+
+      btnGenerate.addEventListener("click", function() {
+        const panelUrl = document.getElementById("inputPanelUrl").value.trim() || "szkola-librus";
+        const options = {
+          enableAi: document.getElementById("optAi").checked,
+          enableStudyTodo: document.getElementById("optStudyTodo").checked,
+          enableUwagi: document.getElementById("optUwagi").checked
+        };
+
+        generatedConfigObj = window.LibrusGenerator.generateDashboardConfig(students, panelUrl, options);
+        updateCodeOutput();
+        resultBox.classList.add("active");
+        resultBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+
+      btnToggleFormat.addEventListener("click", function() {
+        currentFormat = currentFormat === "yaml" ? "json" : "yaml";
+        updateCodeOutput();
+      });
+
+      function showToast(msg) {
+        document.getElementById("toastMessage").textContent = msg;
+        toast.classList.add("show");
+        setTimeout(() => toast.classList.remove("show"), 3000);
+      }
+
+      btnCopy.addEventListener("click", function() {
+        const text = outputCode.textContent;
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(function() {
+          showToast("Skopiowano kod panelu do schowka!");
+        }).catch(function() {
+          showToast("Błąd schowka - zaznacz i skopiuj ręcznie.");
+        });
+      });
+
+      btnDownload.addEventListener("click", function() {
+        const text = outputCode.textContent;
+        if (!text) return;
+        const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = currentFormat === "yaml" ? "dashboard_librus.yaml" : "dashboard_librus.json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast("Pobrano plik panelu!");
+      });
+    });
+  </script>
+</body>
+</html>
