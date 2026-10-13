@@ -1400,6 +1400,18 @@ async def async_setup(hass: HomeAssistant, config: Dict[str, Any]) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Librus APIX from a config entry."""
+    try:
+        import soupsieve
+        ss_ver = str(getattr(soupsieve, "__version__", ""))
+        if ss_ver in ("3.0", "3.0.0"):
+            _LOGGER.error(
+                "Wykryto wadliwą wersję biblioteki soupsieve (%s). Powoduje ona brak ocen (Issue #39). "
+                "Zaktualizuj bibliotekę soupsieve do wersji 3.0.1+ lub przeładuj zależności integracji.",
+                ss_ver,
+            )
+    except Exception:
+        pass
+
     username = entry.data[CONF_USERNAME]
     password = entry.data[CONF_PASSWORD]
     options = entry.options
