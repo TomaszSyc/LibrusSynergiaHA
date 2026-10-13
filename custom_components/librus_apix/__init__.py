@@ -84,6 +84,22 @@ def is_exam_event(event: dict) -> bool:
     return any(x in t for x in ("sprawdzian", "kartkówka", "kartkowka", "klasówka", "klasowka", "praca klasowa", "test"))
 
 
+def _ensure_oauth(client, force_refresh: bool = False) -> str | None:
+    """Zapewnij token OAuth bez nadmiarowych zapytań do /OAuth/Authorization."""
+    oauth = client.cookies.get("oauth_token") or getattr(getattr(client, "token", None), "oauth", None)
+    if oauth and not force_refresh:
+        client.cookies["oauth_token"] = oauth
+        return oauth
+    try:
+        oauth = client.refresh_oauth()
+        if oauth:
+            client.cookies["oauth_token"] = oauth
+        return oauth
+    except Exception as ex:
+        _LOGGER.debug("Błąd odświeżania tokena OAuth: %s", ex)
+        return None
+
+
 # Linia "Klucz: wartosc" w opisie oceny (Kategoria:, Data:, Nauczyciel: ...)
 _KLUCZ_OPISU = re.compile(r"^[A-ZĄĆĘŁŃÓŚŹŻ][\w .()/-]{0,40}: ")
 
@@ -360,6 +376,12 @@ class LibrusApiClient:
             try:
                 loop = asyncio.get_running_loop()
                 self._client = await loop.run_in_executor(None, new_client)
+                if hasattr(self._client, "_session") and hasattr(self._client._session, "request"):
+                    _orig_request = self._client._session.request
+                    def _request_with_timeout(*args, **kwargs):
+                        kwargs.setdefault("timeout", 15)
+                        return _orig_request(*args, **kwargs)
+                    self._client._session.request = _request_with_timeout
                 self._token = await loop.run_in_executor(
                     None, self._client.get_token, self.username, self.password
                 )
@@ -722,15 +744,16 @@ class LibrusApiClient:
             loop = asyncio.get_running_loop()
 
             def _fetch():
-                oauth = client.refresh_oauth()
-                if oauth:
-                    client.cookies["oauth_token"] = oauth
+                _ensure_oauth(client)
                 url = (
                     "%s/gateway/api/2.0/Timetables/OtherActivitiesRegister"
                     "?dateFrom=%s&dateTo=%s&hideOutdatedEntries=false"
                     % (client.BASE_URL, date_from, date_to)
                 )
                 resp = client.get(url)
+                if resp.status_code == 401:
+                    _ensure_oauth(client, force_refresh=True)
+                    resp = client.get(url)
                 payload = resp.json() or {}
                 data = payload.get("data")
                 if data is None:
@@ -756,9 +779,7 @@ class LibrusApiClient:
             loop = asyncio.get_running_loop()
 
             def _fetch():
-                oauth = client.refresh_oauth()
-                if oauth:
-                    client.cookies["oauth_token"] = oauth
+                _ensure_oauth(client)
 
                 results = []
                 for endpoint in ["IndividualLearningPath", "OneToOneLearningPlan"]:
@@ -768,6 +789,9 @@ class LibrusApiClient:
                         % (client.BASE_URL, endpoint, date_from, date_to)
                     )
                     resp = client.get(url)
+                    if resp.status_code == 401:
+                        _ensure_oauth(client, force_refresh=True)
+                        resp = client.get(url)
                     payload = resp.json() or {}
                     data = payload.get("data")
                     if data is None:
@@ -1281,10 +1305,11 @@ class LibrusApiClient:
             loop = asyncio.get_running_loop()
 
             def _fetch():
-                oauth = client.refresh_oauth()
-                if oauth:
-                    client.cookies["oauth_token"] = oauth
+                _ensure_oauth(client)
                 resp = client.get(client.GATEWAY_API_ATTENDANCE)
+                if resp.status_code == 401:
+                    _ensure_oauth(client, force_refresh=True)
+                    resp = client.get(client.GATEWAY_API_ATTENDANCE)
                 payload = resp.json() or {}
                 attendances = payload.get("Attendances")
                 if attendances is None:
