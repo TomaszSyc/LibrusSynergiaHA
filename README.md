@@ -37,10 +37,10 @@ Integracja tworzy następujące sensory:
 | `sensor.librus_[uczen]_tematy_lekcji` | **Tematy zrealizowanych lekcji** z ostatnich 7 dni wraz z wpisem frekwencji i zastępcami | liczba lekcji dzisiaj |
 | `sensor.librus_[uczen]_terminarz` | Nadchodzące wpisy terminarza (sprawdziany, kartkówki, wydarzenia) | liczba wpisów |
 | `sensor.librus_[uczen]_ogloszenia` | Najnowsze ogłoszenia ze szkolnej tablicy | liczba ogłoszeń |
-| `sensor.librus_[uczen]_podsumowanie_ai_rodzic` | (NOWOŚĆ) Raport tygodniowy AI z postępów dla rodzica | Pełny tekst raportu |
-| `sensor.librus_[uczen]_podsumowanie_ai_uczen` | (NOWOŚĆ) Inteligentny raport motywujący na koniec tygodnia dla ucznia | Pełny tekst raportu |
-| `sensor.librus_[uczen]_podsumowanie_wiadomosci_ai_rodzic` | (NOWOŚĆ) Dzienne podsumowanie wiadomości AI dla rodzica | Zestawienie wiadomości |
-| `sensor.librus_[uczen]_podsumowanie_wiadomosci_ai_uczen` | (NOWOŚĆ) Dzienne podsumowanie wiadomości AI dla ucznia | Zadania i terminy |
+| `sensor.librus_[uczen]_podsumowanie_ai_rodzic` | (NOWOŚĆ) Raport tygodniowy AI dla rodzica | skrót do 250 znaków (pełny raport w atrybucie `pełny_tekst`) |
+| `sensor.librus_[uczen]_podsumowanie_ai_uczen` | (NOWOŚĆ) Raport motywujący AI dla ucznia | skrót do 250 znaków (pełny raport w atrybucie `pełny_tekst`) |
+| `sensor.librus_[uczen]_podsumowanie_wiadomosci_ai_rodzic` | (NOWOŚĆ) Dzienne podsumowanie wiadomości dla rodzica | skrót (pełny raport w atrybucie `pełny_tekst`) |
+| `sensor.librus_[uczen]_podsumowanie_wiadomosci_ai_uczen` | (NOWOŚĆ) Dzienne podsumowanie wiadomości dla ucznia | skrót (pełny raport w atrybucie `pełny_tekst`) |
 | `calendar.*_calendar_timetable` | Wbudowany kalendarz lekcji ucznia | wydarzenia |
 | `calendar.*_calendar_schedule` | Wbudowany kalendarz sprawdzianów i wydarzeń | wydarzenia |
 | `todo.*_todo_zadania_domowe_to_do` | Systemowa lista zadań domowych z terminami oddania | lista zadań |
@@ -96,6 +96,9 @@ action:
     data:
       title: "🤖 Librus AI - Raport Tygodniowy"
       message: "{{ states('sensor.librus_twoje_imie_podsumowanie_ai_rodzic') }}"
+      data:
+        clickAction: "/szkola-librus/"
+        url: "/szkola-librus/"
 ```
 
 ### 2. Streszczenie Nowych Wiadomości (Reagowanie na bieżąco)
@@ -123,6 +126,9 @@ action:
     data:
       title: "📬 Librus AI - Masz nową wiadomość!"
       message: "{{ states('sensor.librus_twoje_imie_podsumowanie_wiadomosci_ai_rodzic') }}"
+      data:
+        clickAction: "/szkola-librus/"
+        url: "/szkola-librus/"
 ```
 
 ## 📦 Instalacja
@@ -198,13 +204,13 @@ cards:
   - type: markdown
     content: >
       {% set profil = 'imie_nazwisko' %}
-      {% set encja = 'sensor.librus_' ~ profil ~ '_ai_summary_rodzic' %}
+      {% set encja = 'sensor.librus_' ~ profil ~ '_podsumowanie_ai_rodzic' %}
       {% set raport = state_attr(encja, 'pełny_tekst') %}
       
       {% if raport %}
         {{ raport }}
       {% else %}
-        Asystent AI jeszcze nie wygenerował raportu. Naciśnij przycisk odświeżania!
+        Asystent AI jeszcze nie wygenerował raportu. Naciśnij przycisk poniżej!
       {% endif %}
   - type: button
     tap_action:
@@ -212,6 +218,32 @@ cards:
     entity: button.librus_imie_nazwisko_generuj_podsumowanie_ai
     name: Generuj nowe podsumowanie
     icon: mdi:robot-excited
+```
+
+### NOWOŚĆ: Karta Dziennego Streszczenia Wiadomości AI
+```yaml
+type: custom:stack-in-card
+cards:
+  - type: custom:mushroom-title-card
+    title: 📬 Streszczenie Wiadomości (AI)
+    subtitle: Najważniejsze komunikaty i terminy
+  - type: markdown
+    content: >
+      {% set profil = 'imie_nazwisko' %}
+      {% set encja = 'sensor.librus_' ~ profil ~ '_podsumowanie_wiadomosci_ai_rodzic' %}
+      {% set raport = state_attr(encja, 'pełny_tekst') %}
+      
+      {% if raport %}
+        {{ raport }}
+      {% else %}
+        Brak nowego podsumowania. Naciśnij przycisk, aby przeanalizować skrzynkę!
+      {% endif %}
+  - type: button
+    tap_action:
+      action: toggle
+    entity: button.librus_imie_nazwisko_generuj_podsumowanie_wiadomosci_ai
+    name: Przeanalizuj wiadomości
+    icon: mdi:message-processing
 ```
 
 ### NOWOŚĆ: Karta Uwag o Zachowaniu
@@ -735,8 +767,13 @@ MIT License - patrz [LICENSE](LICENSE)
 
 ### v3.0.0 (Najnowsza - dev)
 - 🤖 **Moduł Asystenta AI**: Automatyczne generowanie personalizowanych podsumowań tygodnia i dziennych wiadomości (z profilami dla rodzica i ucznia).
+- 📅 **Integracja Terminarza i Sprawdzianów**: Tagi `{sprawdziany}` i `{zadania}` w promptach AI pozwalają asystentowi analizować nadchodzące testy i prace klasowe.
+- ⏱️ **Parametryczne Prompty AI**: Możliwość definiowania własnych zakresów dni (np. `{oceny:14}`, `{sprawdziany:10}`, `{frekwencja:14}`, `{nieobecnosci:14}`).
+- 📱 **Optymalizacja Powiadomień i Dashboardu**: Stan sensora AI ograniczony do 250 znaków (idealny pod powiadomienia mobilne), a kompletny raport Markdown dostępny w atrybucie `pełny_tekst`.
+- ⚙️ **Wieloetapowa Konfiguracja**: Nowy, czytelny kreator opcji integracji w HA z podpowiedziami tagów AI.
+- 🐛 **Poprawka braku ocen (Issue #39)**: Wykluczenie wadliwej wersji biblioteki `soupsieve 3.0` blokującej parsowanie ocen w Home Assistant.
 - 🧠 **Adaptacyjny Cache**: Zapobiega problemom z `500 Internal Server Error` od Librusa w godzinach porannych.
-- 🎮 **Lista Wyzwań i Nauki (To-Do)**: Wspiera gamifikację. Dodano również ukryty czujnik binarny "Nauka Odrobiona".
+- 🎮 **Lista Wyzwań i Nauki (To-Do)**: Wspiera gamifikację. Dodano również czujnik binarny "Nauka Odrobiona".
 - 🚨 **Czujnik Uwag**: Śledzi punktację i uwagi o zachowaniu.
 - 📬 **Wiadomości**: Nowa usługa `get_message` i pełna kontrola odczytywanych wiadomości ze skrzynki.
 - ⚡ **Zdarzenia (Events)**: Szybki system powiadomień bez skomplikowanych szablonów.
