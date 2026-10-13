@@ -247,6 +247,8 @@ class LibrusApiClient:
         self._client: Client = None
         self._token = None
         self._auth_lock = asyncio.Lock()
+        self._session_lock = asyncio.Lock()
+        self._pending_message_hrefs = []
         self._message_cache = {}
         self._store = Store(hass, 1, f"{DOMAIN}_messages_cache_{self.username}") if hass else None
         self._bg_fetch_task = None
@@ -277,29 +279,50 @@ class LibrusApiClient:
 
     def _start_background_message_fetcher(self, hrefs: list) -> None:
         """Start background task to gently fetch message contents one by one."""
-        if not self.hass or (self._bg_fetch_task and not self._bg_fetch_task.done()):
+        if not self.hass:
+            return
+
+        if not hasattr(self, "_pending_message_hrefs"):
+            self._pending_message_hrefs = []
+        for h in hrefs:
+            if h not in self._pending_message_hrefs and h not in self._message_cache:
+                self._pending_message_hrefs.append(h)
+
+        if self._bg_fetch_task and not self._bg_fetch_task.done():
             return
 
         async def _fetcher():
             from librus_apix.messages import message_content
+            from contextlib import nullcontext
             loop = asyncio.get_running_loop()
             updated_any = False
-            for href in hrefs:
+
+            while self._pending_message_hrefs:
+                href = self._pending_message_hrefs.pop(0)
                 if href in self._message_cache:
                     continue
+
+                lock = getattr(self, "_session_lock", None) or nullcontext()
+                success = False
                 try:
-                    if not self._client or not self._token:
-                        break
-                    msg_data = await loop.run_in_executor(None, message_content, self._client, href)
-                    content_str = msg_data.content if hasattr(msg_data, 'content') else str(msg_data)
-                    formatted_content = content_str.replace("\n", "<br>") if isinstance(content_str, str) else content_str
-                    self._message_cache[href] = formatted_content
-                    updated_any = True
-                    _LOGGER.debug("Pobrano tresc wiadomosci w tle dla %s", href)
-                    await asyncio.sleep(1.5)
+                    async with lock:
+                        if not self._client or not self._token:
+                            if not await self.async_authenticate():
+                                _LOGGER.debug("Brak uwierzytelnienia dla zadania w tle, przerywam kolejkę")
+                                self._pending_message_hrefs.insert(0, href)
+                                break
+                        msg_data = await loop.run_in_executor(None, message_content, self._client, href)
+                        content_str = msg_data.content if hasattr(msg_data, 'content') else str(msg_data)
+                        formatted_content = content_str.replace("\n", "<br>") if isinstance(content_str, str) else content_str
+                        self._message_cache[href] = formatted_content
+                        updated_any = True
+                        success = True
+                        _LOGGER.debug("Pobrano tresc wiadomosci w tle dla %s", href)
                 except Exception as ex:
                     _LOGGER.debug("Blad pobierania tresci wiadomosci %s w tle: %s", href, ex)
-                    await asyncio.sleep(1.0)
+
+                # Odstęp czasowy POZA blokadą sesji, aby nie blokować innych zadań ani koordynatora
+                await asyncio.sleep(1.5 if success else 1.0)
 
             if updated_any:
                 await self.async_save_cache()
@@ -1416,9 +1439,12 @@ async def async_setup(hass: HomeAssistant, config: Dict[str, Any]) -> bool:
 
         try:
             from librus_apix.messages import message_content
+            from contextlib import nullcontext
             import asyncio
             loop = asyncio.get_running_loop()
-            msg_data = await loop.run_in_executor(None, message_content, client._client, url)
+            lock = getattr(client, "_session_lock", None) or nullcontext()
+            async with lock:
+                msg_data = await loop.run_in_executor(None, message_content, client._client, url)
 
             content_str = msg_data.content if hasattr(msg_data, 'content') else str(msg_data)
             _LOGGER.info("Pobrano wiadomosc z %s", url)

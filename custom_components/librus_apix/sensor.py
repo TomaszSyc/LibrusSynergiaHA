@@ -231,30 +231,34 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
         from datetime import date as _date
         current_sem = 1 if _date.today().month >= 9 else 2
 
-        try:
-            student_info = await self.client.async_get_student_information()
-            grades = await self.client.async_get_grades()
-            messages_count = self.client.options.get("fetch_messages_count", 10)
-            messages = await self.client.async_get_messages(count=messages_count)
-            homework_raw = await self.client.async_get_homework()
-            schedule_raw = await self.client.async_get_schedule()
-            plan_lekcji_raw = await self.client.async_get_timetable()
-            
-            # Restore from cache if failed
-            if plan_lekcji_raw is None:
-                cached_data = await self.store.async_load()
-                if cached_data and "plan_lekcji" in cached_data:
-                    plan_lekcji_raw = cached_data["plan_lekcji"]
-                    _LOGGER.warning("Nie udało się pobrać planu lekcji. Używam danych z cache.")
-            elif plan_lekcji_raw:
-                # Save to cache if successful
-                await self.store.async_save({"plan_lekcji": plan_lekcji_raw})
+        from contextlib import nullcontext
+        lock = getattr(self.client, "_session_lock", None) or nullcontext()
 
-            frekwencja_raw = await self.client.async_get_attendance()
-            ogloszenia_raw = await self.client.async_get_announcements()
-            tematy_raw = await self.client.async_get_completed_lessons()
-            frekwencja_stat_raw = await self.client.async_get_attendance_stats()
-            uwagi_raw = await self.client.async_get_notes()
+        try:
+            async with lock:
+                student_info = await self.client.async_get_student_information()
+                grades = await self.client.async_get_grades()
+                messages_count = self.client.options.get("fetch_messages_count", 10)
+                messages = await self.client.async_get_messages(count=messages_count)
+                homework_raw = await self.client.async_get_homework()
+                schedule_raw = await self.client.async_get_schedule()
+                plan_lekcji_raw = await self.client.async_get_timetable()
+                
+                # Restore from cache if failed
+                if plan_lekcji_raw is None:
+                    cached_data = await self.store.async_load()
+                    if cached_data and "plan_lekcji" in cached_data:
+                        plan_lekcji_raw = cached_data["plan_lekcji"]
+                        _LOGGER.warning("Nie udało się pobrać planu lekcji. Używam danych z cache.")
+                elif plan_lekcji_raw:
+                    # Save to cache if successful
+                    await self.store.async_save({"plan_lekcji": plan_lekcji_raw})
+
+                frekwencja_raw = await self.client.async_get_attendance()
+                ogloszenia_raw = await self.client.async_get_announcements()
+                tematy_raw = await self.client.async_get_completed_lessons()
+                frekwencja_stat_raw = await self.client.async_get_attendance_stats()
+                uwagi_raw = await self.client.async_get_notes()
 
             prev = self.data or {}
 

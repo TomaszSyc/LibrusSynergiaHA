@@ -239,4 +239,42 @@ async def test_service_get_message_multi_student_by_entity_id(hass):
             mock_mc.assert_called_once_with(client_b._client, "/msg/unknown")
 
 
+@pytest.mark.asyncio
+async def test_background_fetcher_session_lock_synchronization(hass):
+    """Test weryfikujący, że zadanie w tle synchronizuje dostęp do sesji za pomocą _session_lock."""
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    client = LibrusApiClient("user", "pass", {}, hass=hass)
+    client._client = MagicMock()
+    client._token = "token"
+    client._store = MagicMock()
+    client._store.async_save = AsyncMock()
+
+    call_order = []
+
+    async def simulate_coordinator_holding_lock():
+        async with client._session_lock:
+            call_order.append("coordinator_start")
+            await asyncio.sleep(0.05)
+            call_order.append("coordinator_end")
+
+    with patch("librus_apix.messages.message_content") as mock_mc:
+        def fake_content(cl, href):
+            call_order.append(f"fetch_{href}")
+            return SimpleNamespace(content="Treść")
+        mock_mc.side_effect = fake_content
+
+        coord_task = hass.async_create_task(simulate_coordinator_holding_lock())
+        client._start_background_message_fetcher(["/msg/1"])
+
+        await coord_task
+        if client._bg_fetch_task:
+            await client._bg_fetch_task
+
+        assert call_order == ["coordinator_start", "coordinator_end", "fetch_/msg/1"]
+        assert client._message_cache["/msg/1"] == "Treść"
+
+
+
 
