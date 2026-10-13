@@ -698,13 +698,15 @@ Integracja pozwala na zdefiniowanie własnych instrukcji (promptów) w opcjach k
 * `{wiadomosci}` – Zestawienie statusu skrzynki, wiadomości nieodczytanych oraz odczytanych z pobraną treścią
 
 ### Dostępne znaczniki w Podsumowaniu Tygodnia:
-* `{dzisiejsza_data}` – Bieżąca data
+* `{dzisiejsza_data}` – Bieżąca data (RRRR-MM-DD)
 * `{imie}` – Imię ucznia
-* `{oceny}` – Tekstowa lista nowych ocen zdobytych w mijającym tygodniu
-* `{frekwencja}` – Wartość liczbowa (np. 85.5) oznaczająca procent frekwencji w obecnym semestrze
-* `{nieobecnosci}` – Słownik/lista podsumowująca ilość spóźnień, nieobecności i zwolnień
-* `{uwagi}` – Treść pozytywnych i negatywnych uwag wpisanych przez nauczycieli
-* `{zadania}` – Nadchodzące zadania domowe, sprawdziany i kartkówki z terminarza
+* `{oceny}` – Tekstowa lista ocen zdobytych w ostatnich 7 dniach (obsługuje `{oceny:DNI}`, np. `{oceny:14}`)
+* `{frekwencja}` – Procent frekwencji z ostatnich 7 dni (obsługuje `{frekwencja:DNI}`, np. `{frekwencja:14}`)
+* `{nieobecnosci}` – Wyszczególnione spóźnienia i nieobecności z ostatnich 7 dni z datami i przedmiotami (obsługuje `{nieobecnosci:DNI}`)
+* `{frekwencja_semestr}` – Ogólny procent obecności ucznia w całym bieżącym semestrze
+* `{sprawdziany}` – Zapowiedziane sprawdziany i kartkówki z terminarza na najbliższe 7 dni (obsługuje `{sprawdziany:DNI}`)
+* `{zadania}` – Zadania domowe z modułu zadań na najbliższe 7 dni (obsługuje `{zadania:DNI}`)
+* `{uwagi}` – Pozytywne i negatywne uwagi od nauczycieli z ostatnich 7 dni (obsługuje `{uwagi:DNI}`)
 
 
 ## 📝 Logi
