@@ -195,6 +195,41 @@ _BEZ_ZDARZENIA = ("", "ob", "wy")
 EVENT_NOWA_UWAGA = f"{DOMAIN}_nowa_uwaga"
 
 
+def _student_info_to_dict(info) -> Optional[Dict[str, Any]]:
+    """Przekształć obiekt StudentInformation na słownik do serializacji JSON."""
+    if not info:
+        return None
+    if isinstance(info, dict):
+        return info
+    return {
+        "name": getattr(info, "name", ""),
+        "class_name": getattr(info, "class_name", ""),
+        "number": getattr(info, "number", 0),
+        "tutor": getattr(info, "tutor", ""),
+        "school": getattr(info, "school", ""),
+        "lucky_number": getattr(info, "lucky_number", ""),
+    }
+
+
+def _student_info_from_dict(data: Optional[Dict[str, Any]]):
+    """Odtwórz obiekt StudentInformation ze słownika."""
+    if not data or not isinstance(data, dict):
+        return None
+    try:
+        from librus_apix.student_information import StudentInformation
+        return StudentInformation(
+            data.get("name", ""),
+            data.get("class_name", ""),
+            data.get("number", 0),
+            data.get("tutor", ""),
+            data.get("school", ""),
+            data.get("lucky_number", ""),
+        )
+    except Exception as ex:
+        _LOGGER.debug("Nie udało się odtworzyć StudentInformation ze słownika: %s", ex)
+        return None
+
+
 class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
     """Klasa zarzadzajaca pobieraniem danych z Librus."""
 
@@ -226,6 +261,47 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
             if data and isinstance(data, dict):
                 self.study_completed_uids = set(data.get("completed", []))
 
+    async def async_load_cached_data(self) -> Optional[Dict[str, Any]]:
+        """Wczytaj zapamiętany stan koordynatora z trwałego magazynu na dysku."""
+        try:
+            cached = await self.store.async_load()
+            if isinstance(cached, dict) and "plan_lekcji" in cached and "oceny" in cached:
+                if "student_info" in cached and isinstance(cached["student_info"], dict):
+                    cached["student_info"] = _student_info_from_dict(cached["student_info"])
+                _LOGGER.debug("Pomyślnie załadowano pełny stan z dyskowego cache dla %s", self.client.username)
+                return cached
+        except Exception as ex:
+            _LOGGER.debug("Nie udało się wczytać pełnego stanu z cache dla %s: %s", self.client.username, ex)
+        return None
+
+    def seed_seen_from_cached_data(self, data: Dict[str, Any]) -> None:
+        """Zainicjalizuj zbiory widzianych elementów z cache, aby uniknąć fałszywych powiadomień."""
+        self._first_run = False
+        for msg in data.get("wiadomosci", []):
+            if isinstance(msg, dict) and "href" in msg:
+                self._seen_message_hrefs.add(msg["href"])
+        for grade in data.get("oceny", []):
+            if isinstance(grade, dict) and "subject" in grade:
+                self._seen_grade_ids.add(
+                    (grade["subject"], grade.get("date"), grade.get("grade"))
+                )
+        for zadanie in data.get("zadania", []):
+            if isinstance(zadanie, dict) and "przedmiot" in zadanie:
+                self._seen_homework_ids.add(
+                    (zadanie["przedmiot"], zadanie.get("termin"), zadanie.get("kategoria"))
+                )
+        for zdarzenie in data.get("terminarz", []):
+            if isinstance(zdarzenie, dict) and "tytul" in zdarzenie:
+                self._seen_schedule_ids.add(
+                    (zdarzenie.get("data"), zdarzenie.get("tytul"), zdarzenie.get("przedmiot"))
+                )
+        for lekcja in data.get("tematy_lekcji", []):
+            if isinstance(lekcja, dict):
+                self._seen_absence_ids.add(_id_nieobecnosci(lekcja))
+        for uwaga in data.get("uwagi", []):
+            if isinstance(uwaga, dict) and "id" in uwaga:
+                self._seen_note_ids.add(uwaga["id"])
+
     async def _async_update_data(self) -> Dict[str, Any]:
         """Pobierz aktualne dane z API Librus."""
         from datetime import date as _date
@@ -250,9 +326,6 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                     if cached_data and "plan_lekcji" in cached_data:
                         plan_lekcji_raw = cached_data["plan_lekcji"]
                         _LOGGER.warning("Nie udało się pobrać planu lekcji. Używam danych z cache.")
-                elif plan_lekcji_raw:
-                    # Save to cache if successful
-                    await self.store.async_save({"plan_lekcji": plan_lekcji_raw})
 
                 frekwencja_raw = await self.client.async_get_attendance()
                 ogloszenia_raw = await self.client.async_get_announcements()
@@ -439,6 +512,13 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                 "frekwencja_stat": frekwencja_stat,
                 "semestr_biezacy": current_sem,
             }
+
+            try:
+                cache_copy = dict(result)
+                cache_copy["student_info"] = _student_info_to_dict(student_info)
+                await self.store.async_save(cache_copy)
+            except Exception as save_ex:
+                _LOGGER.debug("Nie udało się zapisać pełnego stanu do cache: %s", save_ex)
 
             # Pierwsze pobranie - tylko zapamietaj stan, nie wysylaj powiadomien
             if self._first_run:

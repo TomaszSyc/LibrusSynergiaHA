@@ -849,10 +849,11 @@ class LibrusApiClient:
             loop = asyncio.get_running_loop()
 
             def _fetch():
-                oauth = client.refresh_oauth()
-                if oauth:
-                    client.cookies["oauth_token"] = oauth
+                _ensure_oauth(client)
                 resp = client.get(f"{client.BASE_URL}/gateway/api/2.0/Notices")
+                if resp.status_code == 401:
+                    _ensure_oauth(client, force_refresh=True)
+                    resp = client.get(f"{client.BASE_URL}/gateway/api/2.0/Notices")
                 payload = resp.json() or {}
                 data = payload.get("Notices", [])
                 
@@ -1381,31 +1382,39 @@ _RODZAJ_UWAGI = {0: "negatywna", 1: "pozytywna", 2: "neutralna"}
 
 def _fetch_notes(client) -> list | None:
     """Pobierz i zmapuj uwagi (wywolywane w executorze)."""
-    oauth = client.refresh_oauth()
-    if oauth:
-        client.cookies["oauth_token"] = oauth
+    _ensure_oauth(client)
     api = client.BASE_URL + "/gateway/api/2.0/"
-    payload = client.get(api + "Notes").json() or {}
+    resp = client.get(api + "Notes")
+    if resp.status_code == 401:
+        _ensure_oauth(client, force_refresh=True)
+        resp = client.get(api + "Notes")
+    payload = resp.json() or {}
     notes = payload.get("Notes")
     if notes is None:
         _LOGGER.warning("Uwagi: brak pola 'Notes': %s", str(payload)[:200])
         return None
     if not notes:
         return []
-    try:
-        kategorie = {
-            c["Id"]: c.get("CategoryName", "")
-            for c in client.get(api + "Notes/Categories").json().get("Categories", [])
-        }
-    except Exception as ex:  # bez kategorii tez sie da
-        _LOGGER.debug("Nie udało się pobrać kategorii uwag: %s", ex)
-        kategorie = {}
-    try:
-        users = client.get(api + "Users").json().get("Users", [])
-        osoby = {u["Id"]: f"{u.get('LastName', '')} {u.get('FirstName', '')}".strip() for u in users}
-    except Exception as ex:
-        _LOGGER.debug("Nie udało się pobrać użytkowników dla uwag: %s", ex)
-        osoby = {}
+    kategorie = getattr(client, "_notice_categories_cache", None)
+    if kategorie is None:
+        try:
+            kategorie = {
+                c["Id"]: c.get("CategoryName", "")
+                for c in client.get(api + "Notes/Categories").json().get("Categories", [])
+            }
+            client._notice_categories_cache = kategorie
+        except Exception as ex:  # bez kategorii tez sie da
+            _LOGGER.debug("Nie udało się pobrać kategorii uwag: %s", ex)
+            kategorie = {}
+    osoby = getattr(client, "_notice_users_cache", None)
+    if osoby is None:
+        try:
+            users = client.get(api + "Users").json().get("Users", [])
+            osoby = {u["Id"]: f"{u.get('LastName', '')} {u.get('FirstName', '')}".strip() for u in users}
+            client._notice_users_cache = osoby
+        except Exception as ex:
+            _LOGGER.debug("Nie udało się pobrać użytkowników dla uwag: %s", ex)
+            osoby = {}
     return _map_notes(notes, kategorie, osoby)
 
 
@@ -1557,11 +1566,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     client = LibrusApiClient(username, password, options, hass=hass)
     
-    # Test authentication
-    if not await client.async_authenticate():
-        _LOGGER.error("Failed to authenticate")
-        return False
-    
     await client.async_init_cache()
     
     entry.async_on_unload(entry.add_update_listener(update_listener))
@@ -1570,7 +1574,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = LibrusDataUpdateCoordinator(hass, client)
     client.coordinator = coordinator
     await coordinator.async_init_study_store(entry.entry_id)
-    await coordinator.async_config_entry_first_refresh()
+
+    # Spróbuj załadować cache całego stanu z dysku dla natychmiastowego startu
+    cached_data = await coordinator.async_load_cached_data()
+    if cached_data:
+        coordinator.seed_seen_from_cached_data(cached_data)
+        coordinator.async_set_updated_data(cached_data)
+        entry.async_create_background_task(
+            hass,
+            coordinator.async_refresh(),
+            name=f"{DOMAIN}_{entry.entry_id}_startup_refresh",
+        )
+    else:
+        # Pierwsze uruchomienie bez cache - autoryzacja i pełne pobranie
+        if not await client.async_authenticate():
+            _LOGGER.error("Failed to authenticate")
+            return False
+        await coordinator.async_config_entry_first_refresh()
     
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = client
