@@ -6,13 +6,14 @@ from typing import Any, Dict, List, Optional
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
     UpdateFailed,
 )
+from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN, SCAN_INTERVAL
 
@@ -74,6 +75,19 @@ def _srednia_ocen(oceny: List[Dict]) -> Optional[float]:
                 val = float(match.group(1))
                 if val > 6 or grade_str.lower().endswith(('%', 'p', 'pkt')):
                     wartosci.append(val)
+                    continue
+                    
+            # 1b. Sprawdź format X/Y (np. 85/100)
+            if "/" in grade_str:
+                parts = grade_str.split("/")
+                if len(parts) == 2 and parts[0].strip().isdigit() and parts[1].strip().isdigit():
+                    num = float(parts[0].strip())
+                    den = float(parts[1].strip())
+                    # Jeśli to punkty, możemy po prostu dodać wartość (lub zignorować ze średniej, ale załóżmy dodanie punktów)
+                    if den == 100:
+                        wartosci.append(num)
+                    else:
+                        wartosci.append(num / den * 100)
                     continue
 
             # 2. Sprawdz czy to ocena literowa (klasy 1-3)
@@ -160,6 +174,13 @@ async def async_setup_entry(
     # Czujnik globalnej sredniej
     entities.append(LibrusSredniaOcenSensor(coordinator, config_entry))
 
+    # Opcjonalne: Czujniki AI
+    if config_entry.options.get("ai_summary_enabled", False):
+        entities.append(LibrusAISummarySensor(coordinator, config_entry, "rodzic"))
+        entities.append(LibrusAISummarySensor(coordinator, config_entry, "uczen"))
+        entities.append(LibrusAIMessagesSummarySensor(coordinator, config_entry, "rodzic"))
+        entities.append(LibrusAIMessagesSummarySensor(coordinator, config_entry, "uczen"))
+
     async_add_entities(entities)
 
 
@@ -172,6 +193,41 @@ EVENT_NOWA_NIEOBECNOSC = f"{DOMAIN}_nowa_nieobecnosc"
 # Wpisy frekwencji oznaczajace obecnosc - nie wysylamy dla nich zdarzen
 _BEZ_ZDARZENIA = ("", "ob", "wy")
 EVENT_NOWA_UWAGA = f"{DOMAIN}_nowa_uwaga"
+
+
+def _student_info_to_dict(info) -> Optional[Dict[str, Any]]:
+    """Przekształć obiekt StudentInformation na słownik do serializacji JSON."""
+    if not info:
+        return None
+    if isinstance(info, dict):
+        return info
+    return {
+        "name": getattr(info, "name", ""),
+        "class_name": getattr(info, "class_name", ""),
+        "number": getattr(info, "number", 0),
+        "tutor": getattr(info, "tutor", ""),
+        "school": getattr(info, "school", ""),
+        "lucky_number": getattr(info, "lucky_number", ""),
+    }
+
+
+def _student_info_from_dict(data: Optional[Dict[str, Any]]):
+    """Odtwórz obiekt StudentInformation ze słownika."""
+    if not data or not isinstance(data, dict):
+        return None
+    try:
+        from librus_apix.student_information import StudentInformation
+        return StudentInformation(
+            data.get("name", ""),
+            data.get("class_name", ""),
+            data.get("number", 0),
+            data.get("tutor", ""),
+            data.get("school", ""),
+            data.get("lucky_number", ""),
+        )
+    except Exception as ex:
+        _LOGGER.debug("Nie udało się odtworzyć StudentInformation ze słownika: %s", ex)
+        return None
 
 
 class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
@@ -187,6 +243,9 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
         self._seen_absence_ids: set = set()
         self._seen_note_ids: set = set()
         self._first_run: bool = True
+        self.store = Store(hass, 1, f"{DOMAIN}_cache_{self.client.username}")
+        self.study_store: Optional[Store] = None
+        self.study_completed_uids: set = set()
         super().__init__(
             hass,
             _LOGGER,
@@ -194,24 +253,89 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=SCAN_INTERVAL,
         )
 
+    async def async_init_study_store(self, entry_id: str) -> None:
+        """Inicjalizacja współdzielonego Store dla zadań nauki."""
+        if self.study_store is None:
+            self.study_store = Store(self.hass, 1, f"librus_apix_{entry_id}_study")
+            data = await self.study_store.async_load()
+            if data and isinstance(data, dict):
+                self.study_completed_uids = set(data.get("completed", []))
+
+    async def async_load_cached_data(self) -> Optional[Dict[str, Any]]:
+        """Wczytaj zapamiętany stan koordynatora z trwałego magazynu na dysku."""
+        try:
+            cached = await self.store.async_load()
+            if isinstance(cached, dict) and "plan_lekcji" in cached and "oceny" in cached:
+                if "student_info" in cached and isinstance(cached["student_info"], dict):
+                    cached["student_info"] = _student_info_from_dict(cached["student_info"])
+                _LOGGER.debug("Pomyślnie załadowano pełny stan z dyskowego cache dla %s", self.client.username)
+                return cached
+        except Exception as ex:
+            _LOGGER.debug("Nie udało się wczytać pełnego stanu z cache dla %s: %s", self.client.username, ex)
+        return None
+
+    def seed_seen_from_cached_data(self, data: Dict[str, Any]) -> None:
+        """Zainicjalizuj zbiory widzianych elementów z cache, aby uniknąć fałszywych powiadomień."""
+        self._first_run = False
+        for msg in data.get("wiadomosci", []):
+            if isinstance(msg, dict) and "href" in msg:
+                self._seen_message_hrefs.add(msg["href"])
+        for grade in data.get("oceny", []):
+            if isinstance(grade, dict) and "subject" in grade:
+                self._seen_grade_ids.add(
+                    (grade["subject"], grade.get("date"), grade.get("grade"))
+                )
+        for zadanie in data.get("zadania", []):
+            if isinstance(zadanie, dict) and "przedmiot" in zadanie:
+                self._seen_homework_ids.add(
+                    (zadanie["przedmiot"], zadanie.get("termin"), zadanie.get("kategoria"))
+                )
+        for zdarzenie in data.get("terminarz", []):
+            if isinstance(zdarzenie, dict) and "tytul" in zdarzenie:
+                self._seen_schedule_ids.add(
+                    (zdarzenie.get("data"), zdarzenie.get("tytul"), zdarzenie.get("przedmiot"))
+                )
+        for lekcja in data.get("tematy_lekcji", []):
+            if isinstance(lekcja, dict):
+                self._seen_absence_ids.add(_id_nieobecnosci(lekcja))
+        for uwaga in data.get("uwagi", []):
+            if isinstance(uwaga, dict) and "id" in uwaga:
+                self._seen_note_ids.add(uwaga["id"])
+
     async def _async_update_data(self) -> Dict[str, Any]:
         """Pobierz aktualne dane z API Librus."""
         from datetime import date as _date
         current_sem = 1 if _date.today().month >= 9 else 2
 
+        from contextlib import nullcontext
+        lock = getattr(self.client, "_session_lock", None) or nullcontext()
+
         try:
-            student_info = await self.client.async_get_student_information()
-            grades = await self.client.async_get_grades()
-            messages_count = self.client.options.get("fetch_messages_count", 10)
-            messages = await self.client.async_get_messages(count=messages_count)
-            homework_raw = await self.client.async_get_homework()
-            schedule_raw = await self.client.async_get_schedule()
-            plan_lekcji_raw = await self.client.async_get_timetable()
-            frekwencja_raw = await self.client.async_get_attendance()
-            ogloszenia_raw = await self.client.async_get_announcements()
-            tematy_raw = await self.client.async_get_completed_lessons()
-            frekwencja_stat_raw = await self.client.async_get_attendance_stats()
-            uwagi_raw = await self.client.async_get_notes()
+            async with lock:
+                student_info = await self.client.async_get_student_information()
+                grades = await self.client.async_get_grades()
+                messages_count = self.client.options.get("fetch_messages_count", 10)
+                messages = await self.client.async_get_messages(count=messages_count)
+                homework_raw = await self.client.async_get_homework()
+                schedule_raw = await self.client.async_get_schedule()
+                plan_lekcji_raw = await self.client.async_get_timetable()
+                
+                # Restore from cache if failed
+                if plan_lekcji_raw is None:
+                    if self.data and "plan_lekcji" in self.data:
+                        plan_lekcji_raw = self.data["plan_lekcji"]
+                        _LOGGER.warning("Nie udało się pobrać planu lekcji. Używam danych z pamięci.")
+                    else:
+                        cached_data = await self.store.async_load()
+                        if cached_data and "plan_lekcji" in cached_data:
+                            plan_lekcji_raw = cached_data["plan_lekcji"]
+                            _LOGGER.warning("Nie udało się pobrać planu lekcji. Używam danych z cache dyskowego.")
+
+                frekwencja_raw = await self.client.async_get_attendance()
+                ogloszenia_raw = await self.client.async_get_announcements()
+                tematy_raw = await self.client.async_get_completed_lessons()
+                frekwencja_stat_raw = await self.client.async_get_attendance_stats()
+                uwagi_raw = await self.client.async_get_notes()
 
             prev = self.data or {}
 
@@ -275,44 +399,64 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
             )
 
             # Fuzja: Zdarzenia z terminarza -> plan lekcji (dodanie pola zdarzenie)
-            if plan_lekcji and terminarz:
-                for t_ev in terminarz:
-                    ev_date = t_ev.get("data")
-                    ev_title = t_ev.get("tytul")
-                    ev_subject = t_ev.get("przedmiot")
-                    ev_num = t_ev.get("numer_lekcji")
-                    
-                    if not ev_date or not ev_title:
-                        continue
+            if plan_lekcji:
+                dni_wolne = {}
+                if terminarz:
+                    dni_wolne = {
+                        t_ev.get("data"): t_ev.get("tytul")
+                        for t_ev in terminarz
+                        if t_ev.get("rodzaj") == "dzien_wolny" and t_ev.get("data")
+                    }
+
+                for day in plan_lekcji:
+                    d_date = day.get("data")
+                    if d_date in dni_wolne:
+                        day["lekcje"] = []
+                        day["dzien_wolny"] = dni_wolne[d_date]
+                    else:
+                        day.setdefault("dzien_wolny", None)
+
+                if terminarz:
+                    for t_ev in terminarz:
+                        ev_date = t_ev.get("data")
+                        ev_title = t_ev.get("tytul")
+                        ev_subject = t_ev.get("przedmiot")
+                        ev_num = t_ev.get("numer_lekcji")
                         
-                    for day in plan_lekcji:
-                        if day.get("data") != ev_date:
+                        if not ev_date or not ev_title:
+                            continue
+
+                        if ev_date in dni_wolne:
                             continue
                             
-                        scored_lekcje = []
-                        max_score = 0
-                        
-                        for lekcja in day.get("lekcje", []):
-                            score = 0
+                        for day in plan_lekcji:
+                            if day.get("data") != ev_date:
+                                continue
+                                
+                            scored_lekcje = []
+                            max_score = 0
                             
-                            # Dopasowanie po nazwie przedmiotu (WAGA: 2)
-                            if ev_subject and lekcja.get("przedmiot"):
-                                if ev_subject.lower() in lekcja["przedmiot"].lower() or lekcja["przedmiot"].lower() in ev_subject.lower():
-                                    score += 2
-                                    
-                            # Dopasowanie po numerze lekcji (WAGA: 5 - priorytet dla zastępstw)
-                            if ev_num and lekcja.get("numer"):
-                                try:
-                                    # Terminarz moze zwrocic "4", "4-5"
-                                    if str(lekcja["numer"]) in str(ev_num).split("-"):
-                                        score += 5
-                                except Exception:
-                                    pass
-                            
-                            if score > 0:
-                                scored_lekcje.append((score, lekcja))
-                                if score > max_score:
-                                    max_score = score
+                            for lekcja in day.get("lekcje", []):
+                                score = 0
+                                
+                                # Dopasowanie po nazwie przedmiotu (WAGA: 2)
+                                if ev_subject and lekcja.get("przedmiot"):
+                                    if ev_subject.lower() in lekcja["przedmiot"].lower() or lekcja["przedmiot"].lower() in ev_subject.lower():
+                                        score += 2
+                                        
+                                # Dopasowanie po numerze lekcji (WAGA: 5 - priorytet dla zastępstw)
+                                if ev_num and lekcja.get("numer"):
+                                    try:
+                                        # Terminarz moze zwrocic "4", "4-5"
+                                        if str(lekcja["numer"]) in str(ev_num).split("-"):
+                                            score += 5
+                                    except Exception as ex:
+                                        _LOGGER.debug("Błąd podczas dopasowywania numeru lekcji ze zdarzenia: %s", ex)
+                                
+                                if score > 0:
+                                    scored_lekcje.append((score, lekcja))
+                                    if score > max_score:
+                                        max_score = score
                                     
                         # Przypisz zdarzenie tylko do lekcji z najwyzszym wynikiem
                         if max_score > 0:
@@ -354,8 +498,8 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                                         "zdarzenie_opis": opis_str,
                                     })
                                     day["lekcje"].sort(key=lambda x: (int(x.get("numer") or 99), x.get("godzina_od") or "99:99"))
-                                except Exception:
-                                    pass
+                                except Exception as ex:
+                                    _LOGGER.debug("Błąd podczas dodawania zdarzenia do planu lekcji: %s", ex)
 
             result = {
                 "student_info": student_info,
@@ -372,6 +516,13 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                 "frekwencja_stat": frekwencja_stat,
                 "semestr_biezacy": current_sem,
             }
+
+            try:
+                cache_copy = dict(result)
+                cache_copy["student_info"] = _student_info_to_dict(student_info)
+                await self.store.async_save(cache_copy)
+            except Exception as save_ex:
+                _LOGGER.debug("Nie udało się zapisać pełnego stanu do cache: %s", save_ex)
 
             # Pierwsze pobranie - tylko zapamietaj stan, nie wysylaj powiadomien
             if self._first_run:
@@ -401,6 +552,15 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                 self._fire_schedule_events(terminarz, uczen)
                 self._fire_absence_events(tematy_lekcji, uczen)
                 self._fire_note_events(uwagi, uczen)
+
+            # Adaptacyjne odświeżanie
+            from datetime import datetime, timedelta
+            now = datetime.now()
+            # W dni robocze między 7:00 a 16:00 - co 15 minut
+            if 7 <= now.hour < 16 and now.weekday() < 5:
+                self.update_interval = timedelta(minutes=15)
+            else:
+                self.update_interval = SCAN_INTERVAL
 
             return result
 
@@ -555,10 +715,10 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                 )
 
 
-def _device_info(coordinator: DataUpdateCoordinator, config_entry: ConfigEntry) -> Dict[str, Any]:
+def _device_info(coordinator: Optional[DataUpdateCoordinator], config_entry: ConfigEntry) -> Dict[str, Any]:
     """Zwroc informacje o urzadzeniu."""
-    data = coordinator.data or {}
-    student_info = data.get("student_info")
+    data = coordinator.data if coordinator else None
+    student_info = (data or {}).get("student_info")
     name = student_info.name if student_info else "Librus"
     return {
         "identifiers": {(DOMAIN, config_entry.entry_id)},
@@ -910,7 +1070,7 @@ class LibrusWiadomosciSensor(CoordinatorEntity, SensorEntity):
                 "nieprzeczytana": m.get("unread", False),
                 "jest_nowa": m.get("jest_nowa", False),
                 "ma_zalacznik": m.get("has_attachment", False),
-                "tresc": m.get("content", ""),
+                "tresc": m.get("content") or "",
             }
             for m in msgs
         ]
@@ -1145,4 +1305,144 @@ class LibrusOgloszeniaSensor(CoordinatorEntity, SensorEntity):
         return {
             "lista_ogloszen": ogloszenia,
         }
+
+
+
+from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
+
+class LibrusAISummarySensor(RestoreEntity, SensorEntity):
+    """Czujnik z wygenerowanym podsumowaniem AI."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        """Inicjalizacja."""
+        if len(args) == 3:
+            self.coordinator, self._config_entry, self._target = args
+        elif len(args) == 2:
+            self.coordinator = None
+            self._config_entry, self._target = args
+        else:
+            self.coordinator = kwargs.get("coordinator")
+            self._config_entry = kwargs.get("config_entry")
+            self._target = kwargs.get("target")
+
+        self._attr_has_entity_name = False
+        self._attr_name = f"Podsumowanie AI ({'Rodzic' if self._target == 'rodzic' else 'Uczeń'})"
+        self._attr_unique_id = f"{self._config_entry.entry_id}_ai_summary_{self._target}"
+        self._attr_icon = "mdi:robot"
+        self._attr_native_value = "Oczekuje na wygenerowanie..."
+        self._attr_extra_state_attributes = {"pełny_tekst": "Oczekuje na wygenerowanie..."}
+        self._unsub_dispatcher = None
+
+    @property
+    def device_info(self) -> Dict[str, Any]:
+        """Informacje o urzadzeniu."""
+        coord = self.coordinator
+        if coord is None and getattr(self, "hass", None) and DOMAIN in self.hass.data:
+            client = self.hass.data[DOMAIN].get(self._config_entry.entry_id)
+            if client and hasattr(client, "coordinator"):
+                coord = client.coordinator
+        return _device_info(coord, self._config_entry)
+
+    async def async_added_to_hass(self) -> None:
+        """Kiedy encja jest dodana do HA."""
+        await super().async_added_to_hass()
+        
+        # Odtworzenie ostatniego stanu po restarcie
+        last_state = await self.async_get_last_state()
+        if last_state:
+            self._attr_native_value = last_state.state
+            if "pełny_tekst" in last_state.attributes:
+                self._attr_extra_state_attributes["pełny_tekst"] = last_state.attributes["pełny_tekst"]
+        
+        # Nasłuchiwanie na sygnał od przycisku generowania
+        signal = f"librus_ai_summary_{self._config_entry.entry_id}"
+        self._unsub_dispatcher = async_dispatcher_connect(
+            self.hass, signal, self._handle_summary_update
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Kiedy encja jest usuwana."""
+        if self._unsub_dispatcher:
+            self._unsub_dispatcher()
+
+    @callback
+    def _handle_summary_update(self, summaries: dict) -> None:
+        """Aktualizacja stanu na podstawie wygenerowanych danych z AI."""
+        text = summaries.get(self._target, "Brak danych")
+        
+        # Ograniczenie native_value do 255 znaków
+        short_text = text if len(text) <= 250 else text[:247] + "..."
+        
+        self._attr_native_value = short_text
+        self._attr_extra_state_attributes["pełny_tekst"] = text
+        from datetime import datetime
+        self._attr_extra_state_attributes["ostatnia_aktualizacja"] = datetime.now().isoformat()
+        self.async_write_ha_state()
+
+
+class LibrusAIMessagesSummarySensor(RestoreEntity, SensorEntity):
+    """Czujnik przechowujący podsumowanie wiadomości z AI."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        """Inicjalizacja."""
+        if len(args) == 3:
+            self.coordinator, self._config_entry, self._target = args
+        elif len(args) == 2:
+            self.coordinator = None
+            self._config_entry, self._target = args
+        else:
+            self.coordinator = kwargs.get("coordinator")
+            self._config_entry = kwargs.get("config_entry")
+            self._target = kwargs.get("target")
+
+        self._attr_has_entity_name = False
+        self._attr_name = f"Podsumowanie Wiadomości AI ({'Rodzic' if self._target == 'rodzic' else 'Uczeń'})"
+        self._attr_unique_id = f"{self._config_entry.entry_id}_ai_messages_summary_{self._target}"
+        self._attr_icon = "mdi:message-text"
+        self._attr_native_value = "Oczekuje na wygenerowanie..."
+        self._attr_extra_state_attributes = {"pełny_tekst": "Oczekuje na wygenerowanie..."}
+        self._unsub_dispatcher = None
+
+    @property
+    def device_info(self) -> Dict[str, Any]:
+        """Informacje o urzadzeniu."""
+        coord = self.coordinator
+        if coord is None and getattr(self, "hass", None) and DOMAIN in self.hass.data:
+            client = self.hass.data[DOMAIN].get(self._config_entry.entry_id)
+            if client and hasattr(client, "coordinator"):
+                coord = client.coordinator
+        return _device_info(coord, self._config_entry)
+
+    async def async_added_to_hass(self) -> None:
+        """Kiedy encja jest dodana do HA."""
+        await super().async_added_to_hass()
+        
+        last_state = await self.async_get_last_state()
+        if last_state:
+            self._attr_native_value = last_state.state
+            if "pełny_tekst" in last_state.attributes:
+                self._attr_extra_state_attributes["pełny_tekst"] = last_state.attributes["pełny_tekst"]
+        
+        signal = f"librus_ai_messages_summary_{self._config_entry.entry_id}"
+        self._unsub_dispatcher = async_dispatcher_connect(
+            self.hass, signal, self._handle_summary_update
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Kiedy encja jest usuwana."""
+        if self._unsub_dispatcher:
+            self._unsub_dispatcher()
+
+    @callback
+    def _handle_summary_update(self, summaries: dict) -> None:
+        """Aktualizacja stanu na podstawie wygenerowanych danych z AI."""
+        text = summaries.get(self._target, "Brak danych")
+        short_text = text if len(text) <= 250 else text[:247] + "..."
+        
+        self._attr_native_value = short_text
+        self._attr_extra_state_attributes["pełny_tekst"] = text
+        from datetime import datetime
+        self._attr_extra_state_attributes["ostatnia_aktualizacja"] = datetime.now().isoformat()
+        self.async_write_ha_state()
 

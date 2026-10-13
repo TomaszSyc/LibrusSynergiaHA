@@ -4,14 +4,16 @@ import logging
 from datetime import datetime, date
 from typing import Any, Dict, List
 
-from homeassistant.components.todo import TodoListEntity, TodoItem, TodoItemStatus
+from homeassistant.components.todo import TodoListEntity, TodoItem, TodoItemStatus, TodoListEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import DOMAIN
 from .sensor import _device_info
+from . import is_exam_event
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,7 +27,8 @@ async def async_setup_entry(
     coordinator = client.coordinator
     
     async_add_entities([
-        LibrusHomeworkTodoList(coordinator, config_entry)
+        LibrusHomeworkTodoList(coordinator, config_entry),
+        LibrusStudyTodoList(coordinator, config_entry)
     ])
 
 
@@ -89,4 +92,112 @@ class LibrusHomeworkTodoList(CoordinatorEntity, TodoListEntity):
 
     async def async_delete_todo_items(self, uids: List[str]) -> None:
         """Usuwanie nie jest wspierane przez Librus."""
+        pass
+
+
+class LibrusStudyTodoList(CoordinatorEntity, TodoListEntity):
+    """Lista przypomnień o nauce do sprawdzianów."""
+
+    def __init__(self, coordinator, config_entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._config_entry = config_entry
+        self._attr_has_entity_name = False
+        self._attr_name = "Przygotowanie do lekcji (To-Do)"
+        self._attr_unique_id = f"{config_entry.entry_id}_todo_nauka_to_do"
+        self._attr_icon = "mdi:book-open-variant"
+
+    @property
+    def _completed_uids(self) -> set:
+        return getattr(self.coordinator, "study_completed_uids", set())
+
+    @_completed_uids.setter
+    def _completed_uids(self, value: set) -> None:
+        self.coordinator.study_completed_uids = value
+
+    async def async_added_to_hass(self) -> None:
+        """Kiedy encja zostaje dodana do HA."""
+        await super().async_added_to_hass()
+        if hasattr(self.coordinator, "async_init_study_store"):
+            await self.coordinator.async_init_study_store(self._config_entry.entry_id)
+
+    @property
+    def device_info(self) -> Dict[str, Any]:
+        return _device_info(self.coordinator, self._config_entry)
+
+    @property
+    def supported_features(self) -> TodoListEntityFeature:
+        """Flagi obslugiwanych operacji."""
+        return TodoListEntityFeature.UPDATE_TODO_ITEM
+
+    @property
+    def todo_items(self) -> List[TodoItem] | None:
+        """Zwraca listę przypomnień o nauce."""
+        days_before = self._config_entry.options.get("days_before_exam_study", 2)
+        if days_before <= 0:
+            return []
+
+        data = self.coordinator.data or {}
+        terminarz = data.get("terminarz", [])
+        
+        items = []
+        today = date.today()
+        
+        for z in terminarz:
+            if not is_exam_event(z):
+                continue
+                
+            data_str = z.get("data", "")
+            if not data_str:
+                continue
+                
+            try:
+                exam_date = datetime.strptime(data_str, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            
+            days_until = (exam_date - today).days
+            
+            # Pokazujemy tylko sprawdziany w ciągu najblizszych `days_before` dni
+            # i ukrywamy stare, zeby nie spamowaly.
+            if 0 <= days_until <= days_before:
+                przedmiot = z.get("przedmiot", "Brak")
+                tytul = z.get("tytul", "")
+                
+                uid_str = f"{data_str}-{przedmiot}-{tytul}"
+                uid = hashlib.md5(uid_str.encode('utf-8')).hexdigest()
+                
+                status = TodoItemStatus.COMPLETED if uid in self._completed_uids else TodoItemStatus.NEEDS_ACTION
+                
+                items.append(TodoItem(
+                    summary=f"Nauka: {przedmiot} ({tytul})",
+                    uid=uid,
+                    status=status,
+                    due=exam_date,
+                    description=z.get("szczegoly", {}).get("Opis", "")
+                ))
+            
+        return items
+
+    async def async_create_todo_item(self, item: TodoItem) -> None:
+        """Dodawanie ręczne nie jest wspierane."""
+        pass
+
+    async def async_update_todo_item(self, item: TodoItem) -> None:
+        """Zapisuje lokalnie ze uczen odhaczyl ze sie uczył."""
+        if not hasattr(self.coordinator, "study_completed_uids"):
+            self.coordinator.study_completed_uids = set()
+
+        if item.status == TodoItemStatus.COMPLETED:
+            self.coordinator.study_completed_uids.add(item.uid)
+        else:
+            self.coordinator.study_completed_uids.discard(item.uid)
+            
+        study_store = getattr(self.coordinator, "study_store", None)
+        if study_store:
+            await study_store.async_save({"completed": list(self.coordinator.study_completed_uids)})
+        self.async_write_ha_state()
+        async_dispatcher_send(self.hass, f"librus_apix_{self._config_entry.entry_id}_study_updated")
+
+    async def async_delete_todo_items(self, uids: List[str]) -> None:
+        """Usuwanie nie jest wspierane."""
         pass

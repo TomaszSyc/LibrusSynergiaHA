@@ -9,10 +9,11 @@ from typing import Dict, Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.storage import Store
 
 from librus_apix.client import Client, new_client
 from librus_apix.exceptions import TokenError
@@ -70,6 +71,64 @@ def _rodzaj_zdarzenia(tytul: str, href: str) -> str:
     if "kartkówka" in t or "kartkowka" in t:
         return "kartkowka"
     return "wydarzenie"
+
+
+def is_exam_event(event: dict) -> bool:
+    """Sprawdz czy wpis terminarza to sprawdzian / kartkowka / klasowka."""
+    if not isinstance(event, dict):
+        return False
+    rodzaj = (event.get("rodzaj") or "").lower()
+    if rodzaj in ("sprawdzian", "kartkowka"):
+        return True
+    t = (event.get("tytul") or "").lower()
+    return any(x in t for x in ("sprawdzian", "kartkówka", "kartkowka", "klasówka", "klasowka", "praca klasowa", "test"))
+
+
+def _get_oauth_token(client) -> str | None:
+    """Bezpiecznie pobierz token OAuth bez wywoływania CookieConflictError."""
+    token_obj = getattr(client, "token", None)
+    if token_obj and getattr(token_obj, "oauth", None):
+        return token_obj.oauth
+    cookies = getattr(client, "cookies", None)
+    if cookies and hasattr(cookies, "__iter__"):
+        for c in cookies:
+            if getattr(c, "name", None) == "oauth_token" and c.value:
+                return c.value
+    return None
+
+
+def _set_oauth_cookie(jar, oauth_val: str) -> None:
+    """Ustaw ciasteczko oauth_token z domeną synergia.librus.pl, usuwając duplikaty."""
+    if jar is None or not hasattr(jar, "set"):
+        return
+    try:
+        to_remove = [c for c in jar if getattr(c, "name", None) == "oauth_token"]
+        for c in to_remove:
+            jar.clear(c.domain, c.path, c.name)
+    except Exception as clear_ex:
+        _LOGGER.debug("Błąd czyszczenia zduplikowanych ciasteczek oauth_token: %s", clear_ex)
+    try:
+        jar.set("oauth_token", oauth_val, domain="synergia.librus.pl", path="/")
+    except Exception as set_ex:
+        _LOGGER.debug("Błąd ustawiania ciasteczka oauth_token: %s", set_ex)
+
+
+def _ensure_oauth(client, force_refresh: bool = False) -> str | None:
+    """Zapewnij token OAuth bez nadmiarowych zapytań ani konfliktów ciasteczek."""
+    oauth = _get_oauth_token(client)
+    if oauth and not force_refresh:
+        _set_oauth_cookie(getattr(client, "cookies", None), oauth)
+        return oauth
+    try:
+        oauth = client.refresh_oauth()
+        if oauth:
+            _set_oauth_cookie(getattr(client, "cookies", None), oauth)
+        return oauth
+    except Exception as ex:
+        _LOGGER.debug("Błąd odświeżania tokena OAuth: %s", ex)
+        return None
+
+
 # Linia "Klucz: wartosc" w opisie oceny (Kategoria:, Data:, Nauczyciel: ...)
 _KLUCZ_OPISU = re.compile(r"^[A-ZĄĆĘŁŃÓŚŹŻ][\w .()/-]{0,40}: ")
 
@@ -219,7 +278,7 @@ def _parse_completed_lessons(html: str) -> list:
     return lessons
 
 
-PLATFORMS = ["sensor", "calendar", "todo", "button"]
+PLATFORMS = ["sensor", "calendar", "todo", "button", "binary_sensor"]
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -237,17 +296,113 @@ CONFIG_SCHEMA = vol.Schema(
 class LibrusApiClient:
     """Class to interface with the Librus API."""
 
-    def __init__(self, username: str, password: str, options: dict = None):
+    def __init__(self, username: str, password: str, options: dict = None, hass: HomeAssistant = None):
         """Initialize the client."""
         self.username = username
         self.password = password
         self.options = options or {}
+        self.hass = hass
         self._client: Client = None
         self._token = None
         self._auth_lock = asyncio.Lock()
+        self._session_lock = asyncio.Lock()
+        self._pending_message_hrefs = []
+        self._message_cache = {}
+        self._store = Store(hass, 1, f"{DOMAIN}_messages_cache_{self.username}") if hass else None
+        self._bg_fetch_task = None
+        self.coordinator = None
+
+    async def async_init_cache(self) -> None:
+        """Load cached message contents from persistent store."""
+        if self._store:
+            try:
+                cached = await self._store.async_load()
+                if isinstance(cached, dict):
+                    self._message_cache.update(cached)
+                    _LOGGER.debug("Zaladowano %d wiadomosci z trwalego cache dla %s", len(self._message_cache), self.username)
+            except Exception as ex:
+                _LOGGER.warning("Nie udalo sie wczytac cache wiadomosci dla %s: %s", self.username, ex)
+
+    async def async_save_cache(self) -> None:
+        """Save cached message contents to persistent store."""
+        if self._store:
+            try:
+                if len(self._message_cache) > 100:
+                    keys = list(self._message_cache.keys())
+                    for k in keys[:-100]:
+                        self._message_cache.pop(k, None)
+                await self._store.async_save(self._message_cache)
+            except Exception as ex:
+                _LOGGER.warning("Nie udalo sie zapisac cache wiadomosci dla %s: %s", self.username, ex)
+
+    def _start_background_message_fetcher(self, hrefs: list) -> None:
+        """Start background task to gently fetch message contents one by one."""
+        if not self.hass:
+            return
+
+        if not hasattr(self, "_pending_message_hrefs"):
+            self._pending_message_hrefs = []
+        for h in hrefs:
+            if h not in self._pending_message_hrefs and h not in self._message_cache:
+                self._pending_message_hrefs.append(h)
+
+        if self._bg_fetch_task and not self._bg_fetch_task.done():
+            return
+
+        async def _fetcher():
+            from librus_apix.messages import message_content
+            from contextlib import nullcontext
+            loop = asyncio.get_running_loop()
+            updated_any = False
+
+            while self._pending_message_hrefs:
+                href = self._pending_message_hrefs.pop(0)
+                if href in self._message_cache:
+                    continue
+
+                lock = getattr(self, "_session_lock", None) or nullcontext()
+                success = False
+                try:
+                    async with lock:
+                        if not self._client or not self._token:
+                            if not await self.async_authenticate():
+                                _LOGGER.debug("Brak uwierzytelnienia dla zadania w tle, przerywam kolejkę")
+                                self._pending_message_hrefs.insert(0, href)
+                                break
+                        msg_data = await loop.run_in_executor(None, message_content, self._client, href)
+                        content_str = msg_data.content if hasattr(msg_data, 'content') else str(msg_data)
+                        formatted_content = content_str.replace("\n", "<br>") if isinstance(content_str, str) else content_str
+                        self._message_cache[href] = formatted_content
+                        updated_any = True
+                        success = True
+                        _LOGGER.debug("Pobrano tresc wiadomosci w tle dla %s", href)
+                except Exception as ex:
+                    _LOGGER.debug("Blad pobierania tresci wiadomosci %s w tle: %s", href, ex)
+
+                # Odstęp czasowy POZA blokadą sesji, aby nie blokować innych zadań ani koordynatora
+                await asyncio.sleep(1.5 if success else 1.0)
+
+            if updated_any:
+                await self.async_save_cache()
+                if self.coordinator and self.coordinator.data:
+                    msgs = self.coordinator.data.get("wiadomosci", [])
+                    for m in msgs:
+                        h = m.get("href")
+                        if h in self._message_cache:
+                            m["content"] = self._message_cache[h]
+                    self.coordinator.async_update_listeners()
+
+        self._bg_fetch_task = self.hass.async_create_task(_fetcher())
 
     def _reset_auth(self) -> None:
         """Reset authentication state to force re-authentication on next call."""
+        orig_close = getattr(self, "_orig_session_close", None)
+        if orig_close and self._client and hasattr(self._client, "_session"):
+            try:
+                orig_close()
+            except Exception:
+                pass
+        self._orig_session_close = None
         self._client = None
         self._token = None
 
@@ -257,6 +412,18 @@ class LibrusApiClient:
             try:
                 loop = asyncio.get_running_loop()
                 self._client = await loop.run_in_executor(None, new_client)
+                if hasattr(self._client, "_session") and hasattr(self._client._session, "request"):
+                    _orig_request = self._client._session.request
+                    def _request_with_timeout(*args, **kwargs):
+                        kwargs.setdefault("timeout", 15)
+                        return _orig_request(*args, **kwargs)
+                    self._client._session.request = _request_with_timeout
+
+                    # Keep-Alive: zapobieganie zamykaniu puli połączeń TCP/TLS przez 'with self._session as s:'
+                    if hasattr(self._client._session, "close") and not getattr(self, "_orig_session_close", None):
+                        self._orig_session_close = self._client._session.close
+                        self._client._session.close = lambda: None
+
                 self._token = await loop.run_in_executor(
                     None, self._client.get_token, self.username, self.password
                 )
@@ -276,11 +443,33 @@ class LibrusApiClient:
                         return None
                 client = self._client
 
-                from librus_apix.grades import get_grades
+                def _fetch_grades_data():
+                    html = client.post(
+                        client.GRADES_URL, data={"zmiany_logowanie_wszystkie": "1"}
+                    ).text
+                    from bs4 import BeautifulSoup
+                    from librus_apix.grades import (
+                        no_access_check,
+                        _extract_grades_numeric,
+                        _extract_grades_descriptive,
+                        ParseError,
+                    )
+                    soup = no_access_check(BeautifulSoup(html, "lxml"))
+                    tr = soup.find_all("tr", attrs={"class": ["line0", "line1"], "id": None})
+                    if len(tr) < 1:
+                        raise ParseError("Error in parsing grades")
+                    num_grades, avg_grades = _extract_grades_numeric(tr)
+                    desc_grades = _extract_grades_descriptive(tr)
+                    try:
+                        point_grades = _parse_point_grades(html)
+                    except Exception as pt_ex:
+                        _LOGGER.debug("Nie udało się odczytać ocen punktowych: %s", pt_ex)
+                        point_grades = []
+                    return num_grades, avg_grades, desc_grades, point_grades
 
                 loop = asyncio.get_running_loop()
-                numeric_grades, average_grades, descriptive_grades = await loop.run_in_executor(
-                    None, get_grades, client, "all"
+                numeric_grades, average_grades, descriptive_grades, point_grades = await loop.run_in_executor(
+                    None, _fetch_grades_data
                 )
 
                 current_sem = _current_semester()
@@ -382,19 +571,10 @@ class LibrusApiClient:
                                     'type': 'descriptive'
                                 })
 
-                # Oceny punktowe (sekcja "Oceny punktowe", np. 0-100) - librus-apix je pomija
-                try:
-                    html = await loop.run_in_executor(
-                        None,
-                        lambda: client.post(
-                            client.GRADES_URL, data={"zmiany_logowanie_wszystkie": "1"}
-                        ).text,
-                    )
-                    for g in _parse_point_grades(html):
-                        if g["semester"] == current_sem:
-                            all_grades.append(g)
-                except Exception as ex:  # best-effort: nie psuje zwyklych ocen
-                    _LOGGER.warning("Nie udalo sie odczytac ocen punktowych: %s", ex)
+                # Oceny punktowe pobrane z tego samego żądania
+                for g in point_grades:
+                    if g.get("semester") == current_sem:
+                        all_grades.append(g)
 
                 return all_grades
 
@@ -408,11 +588,13 @@ class LibrusApiClient:
                     _LOGGER.error("Failed to get grades after re-authentication.")
                     return None
             except Exception as ex:
+                if type(ex).__name__ == "ParseError":
+                    _LOGGER.debug("Brak lub błąd parsowania ocen (np. konto bez dostępu do ocen): %s", ex)
+                    return []
                 _LOGGER.error(
                     "Failed to get grades (attempt %d/2): %s\n%s",
                     attempt + 1, ex, traceback.format_exc(),
                 )
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -446,6 +628,7 @@ class LibrusApiClient:
                 fetch_content = self.options.get("fetch_messages_content", False)
 
                 result = []
+                missing_content_hrefs = []
                 for msg in messages:
                     msg_dict = {
                         "author": msg.author,
@@ -455,16 +638,19 @@ class LibrusApiClient:
                         "unread": msg.unread,
                         "has_attachment": msg.has_attachment,
                     }
-                    if fetch_content:
-                        try:
-                            msg_data = await loop.run_in_executor(None, message_content, client, msg.href)
-                            content_str = msg_data.content if hasattr(msg_data, 'content') else str(msg_data)
-                            msg_dict["content"] = content_str.replace("\n", "<br>") if isinstance(content_str, str) else content_str
-                        except Exception as e:
-                            _LOGGER.warning("Could not fetch content for message %s: %s", msg.href, e)
+                    if fetch_content or not msg.unread:
+                        if msg.href in self._message_cache:
+                            msg_dict["content"] = self._message_cache[msg.href]
+                        else:
                             msg_dict["content"] = None
+                            missing_content_hrefs.append(msg.href)
+                    else:
+                        msg_dict["content"] = None
                     
                     result.append(msg_dict)
+
+                if missing_content_hrefs and self.hass:
+                    self._start_background_message_fetcher(missing_content_hrefs)
 
                 return result
 
@@ -482,7 +668,6 @@ class LibrusApiClient:
                     "Failed to get messages (attempt %d/2): %s\n%s",
                     attempt + 1, ex, traceback.format_exc(),
                 )
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -520,7 +705,6 @@ class LibrusApiClient:
                     "Failed to get homework (attempt %d/2): %s\n%s",
                     attempt + 1, ex, traceback.format_exc(),
                 )
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -576,6 +760,7 @@ class LibrusApiClient:
                                     "numer_lekcji": ev.number,
                                     "szczegoly": szczegoly,
                                     "href": ev.href,
+                                    "data_dodania": getattr(ev, "add_date", ""),
                                 })
                     return sorted(events, key=lambda e: e["data"])
 
@@ -595,7 +780,6 @@ class LibrusApiClient:
                     "Failed to get schedule (attempt %d/2): %s\n%s",
                     attempt + 1, ex, traceback.format_exc(),
                 )
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -615,15 +799,16 @@ class LibrusApiClient:
             loop = asyncio.get_running_loop()
 
             def _fetch():
-                oauth = client.refresh_oauth()
-                if oauth:
-                    client.cookies["oauth_token"] = oauth
+                _ensure_oauth(client)
                 url = (
                     "%s/gateway/api/2.0/Timetables/OtherActivitiesRegister"
                     "?dateFrom=%s&dateTo=%s&hideOutdatedEntries=false"
                     % (client.BASE_URL, date_from, date_to)
                 )
                 resp = client.get(url)
+                if resp.status_code == 401:
+                    _ensure_oauth(client, force_refresh=True)
+                    resp = client.get(url)
                 payload = resp.json() or {}
                 data = payload.get("data")
                 if data is None:
@@ -649,9 +834,7 @@ class LibrusApiClient:
             loop = asyncio.get_running_loop()
 
             def _fetch():
-                oauth = client.refresh_oauth()
-                if oauth:
-                    client.cookies["oauth_token"] = oauth
+                _ensure_oauth(client)
 
                 results = []
                 for endpoint in ["IndividualLearningPath", "OneToOneLearningPlan"]:
@@ -661,6 +844,9 @@ class LibrusApiClient:
                         % (client.BASE_URL, endpoint, date_from, date_to)
                     )
                     resp = client.get(url)
+                    if resp.status_code == 401:
+                        _ensure_oauth(client, force_refresh=True)
+                        resp = client.get(url)
                     payload = resp.json() or {}
                     data = payload.get("data")
                     if data is None:
@@ -677,6 +863,47 @@ class LibrusApiClient:
             return await loop.run_in_executor(None, _fetch)
         except Exception as ex:
             _LOGGER.warning("ZŚK: nie udało się pobrać: %s", ex)
+            return []
+
+    async def async_get_notices(self):
+        """Pobierz uwagi o zachowaniu z gateway API."""
+        try:
+            if not self._client or not self._token:
+                if not await self.async_authenticate():
+                    return []
+            client = self._client
+            loop = asyncio.get_running_loop()
+
+            def _fetch():
+                _ensure_oauth(client)
+                resp = client.get(f"{client.BASE_URL}/gateway/api/2.0/Notices")
+                if resp.status_code == 401:
+                    _ensure_oauth(client, force_refresh=True)
+                    resp = client.get(f"{client.BASE_URL}/gateway/api/2.0/Notices")
+                payload = resp.json() or {}
+                data = payload.get("Notices", [])
+                
+                # Czasem zalezy to od API, spróbujmy tez innej sciezki:
+                if not data and "data" in payload:
+                    data = payload.get("data", [])
+                    
+                result = []
+                for notice in data:
+                    cat = notice.get("Category", {})
+                    teacher = notice.get("Teacher", {})
+                    
+                    result.append({
+                        "data": notice.get("CreationDate", "")[:10],
+                        "nauczyciel": f"{teacher.get('FirstName', '')} {teacher.get('LastName', '')}".strip(),
+                        "kategoria": cat.get("Name", "Uwaga"),
+                        "tresc": notice.get("Content", ""),
+                        "typ": cat.get("Type", "Neutral") # Możliwe wartosci: Positive, Negative, Neutral
+                    })
+                return result
+
+            return await loop.run_in_executor(None, _fetch)
+        except Exception as ex:
+            _LOGGER.warning("Uwagi: nie udało się pobrać uwag: %s", ex)
             return []
 
     async def async_get_timetable(self):
@@ -925,7 +1152,6 @@ class LibrusApiClient:
                     "Failed to get timetable (attempt %d/2): %s\n%s",
                     attempt + 1, ex, traceback.format_exc(),
                 )
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -956,7 +1182,6 @@ class LibrusApiClient:
                     "Failed to get student information (attempt %d/2): %s\n%s",
                     attempt + 1, ex, traceback.format_exc(),
                 )
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -994,7 +1219,6 @@ class LibrusApiClient:
                 if type(ex).__name__ == "ParseError":
                     return []
                 _LOGGER.error("Failed to get attendance (attempt %d/2): %s", attempt + 1, ex)
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -1029,7 +1253,6 @@ class LibrusApiClient:
                 if type(ex).__name__ == "ParseError":
                     return []
                 _LOGGER.error("Failed to get announcements (attempt %d/2): %s", attempt + 1, ex)
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -1052,7 +1275,6 @@ class LibrusApiClient:
                         return None
                 client = self._client
 
-                from librus_apix.completed_lessons import get_max_page_number
                 from datetime import date as _date, timedelta
 
                 today = _date.today()
@@ -1060,27 +1282,48 @@ class LibrusApiClient:
                 date_to = today.strftime("%Y-%m-%d")
 
                 def _fetch_all_pages():
-                    max_pages = get_max_page_number(client, date_from, date_to)
-                    lessons = []
-                    seen = set()
-                    for page in range(min(max_pages, 9) + 1):
-                        html = client.post(
-                            client.COMPLETED_LESSONS_URL,
-                            data={
-                                "data1": date_from,
-                                "data2": date_to,
-                                "filtruj_id_przedmiotu": -1,
-                                "numer_strony1001": page,
-                                "porcjowanie_pojemnik1001": 1001,
-                            },
-                        ).text
-                        for lesson in _parse_completed_lessons(html):
-                            key = (lesson["data"], lesson["numer"], lesson["przedmiot"], lesson["temat"])
-                            if key in seen:
-                                continue
-                            seen.add(key)
-                            lessons.append(lesson)
-                    return lessons
+                    last_post = {}
+                    orig_post = client.post
+                    def _caching_post(url, data=None, **kwargs):
+                        if url == client.COMPLETED_LESSONS_URL and data and data.get("numer_strony1001") == 0:
+                            if "page_0" in last_post:
+                                return last_post["page_0"]
+                            resp = orig_post(url, data=data, **kwargs)
+                            last_post["page_0"] = resp
+                            return resp
+                        return orig_post(url, data=data, **kwargs)
+
+                    try:
+                        client.post = _caching_post
+                        from librus_apix.completed_lessons import get_max_page_number
+                        try:
+                            max_pages = get_max_page_number(client, date_from, date_to)
+                        except Exception:
+                            max_pages = 0
+
+                        lessons = []
+                        seen = set()
+                        for page in range(min(max_pages, 9) + 1):
+                            resp = client.post(
+                                client.COMPLETED_LESSONS_URL,
+                                data={
+                                    "data1": date_from,
+                                    "data2": date_to,
+                                    "filtruj_id_przedmiotu": -1,
+                                    "numer_strony1001": page,
+                                    "porcjowanie_pojemnik1001": 1001,
+                                },
+                            )
+                            html = resp.text if hasattr(resp, "text") else str(resp)
+                            for lesson in _parse_completed_lessons(html):
+                                key = (lesson["data"], lesson["numer"], lesson["przedmiot"], lesson["temat"])
+                                if key in seen:
+                                    continue
+                                seen.add(key)
+                                lessons.append(lesson)
+                        return lessons
+                    finally:
+                        client.post = orig_post
 
                 loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(None, _fetch_all_pages)
@@ -1104,7 +1347,6 @@ class LibrusApiClient:
                     "Failed to get completed lessons (attempt %d/2): %s\n%s",
                     attempt + 1, ex, traceback.format_exc(),
                 )
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -1134,10 +1376,11 @@ class LibrusApiClient:
             loop = asyncio.get_running_loop()
 
             def _fetch():
-                oauth = client.refresh_oauth()
-                if oauth:
-                    client.cookies["oauth_token"] = oauth
+                _ensure_oauth(client)
                 resp = client.get(client.GATEWAY_API_ATTENDANCE)
+                if resp.status_code == 401:
+                    _ensure_oauth(client, force_refresh=True)
+                    resp = client.get(client.GATEWAY_API_ATTENDANCE)
                 payload = resp.json() or {}
                 attendances = payload.get("Attendances")
                 if attendances is None:
@@ -1180,29 +1423,39 @@ _RODZAJ_UWAGI = {0: "negatywna", 1: "pozytywna", 2: "neutralna"}
 
 def _fetch_notes(client) -> list | None:
     """Pobierz i zmapuj uwagi (wywolywane w executorze)."""
-    oauth = client.refresh_oauth()
-    if oauth:
-        client.cookies["oauth_token"] = oauth
+    _ensure_oauth(client)
     api = client.BASE_URL + "/gateway/api/2.0/"
-    payload = client.get(api + "Notes").json() or {}
+    resp = client.get(api + "Notes")
+    if resp.status_code == 401:
+        _ensure_oauth(client, force_refresh=True)
+        resp = client.get(api + "Notes")
+    payload = resp.json() or {}
     notes = payload.get("Notes")
     if notes is None:
         _LOGGER.warning("Uwagi: brak pola 'Notes': %s", str(payload)[:200])
         return None
     if not notes:
         return []
-    try:
-        kategorie = {
-            c["Id"]: c.get("CategoryName", "")
-            for c in client.get(api + "Notes/Categories").json().get("Categories", [])
-        }
-    except Exception:  # bez kategorii tez sie da
-        kategorie = {}
-    try:
-        users = client.get(api + "Users").json().get("Users", [])
-        osoby = {u["Id"]: f"{u.get('LastName', '')} {u.get('FirstName', '')}".strip() for u in users}
-    except Exception:
-        osoby = {}
+    kategorie = getattr(client, "_notice_categories_cache", None)
+    if not isinstance(kategorie, dict):
+        try:
+            kategorie = {
+                c["Id"]: c.get("CategoryName", "")
+                for c in client.get(api + "Notes/Categories").json().get("Categories", [])
+            }
+            client._notice_categories_cache = kategorie
+        except Exception as ex:  # bez kategorii tez sie da
+            _LOGGER.debug("Nie udało się pobrać kategorii uwag: %s", ex)
+            kategorie = {}
+    osoby = getattr(client, "_notice_users_cache", None)
+    if not isinstance(osoby, dict):
+        try:
+            users = client.get(api + "Users").json().get("Users", [])
+            osoby = {u["Id"]: f"{u.get('LastName', '')} {u.get('FirstName', '')}".strip() for u in users}
+            client._notice_users_cache = osoby
+        except Exception as ex:
+            _LOGGER.debug("Nie udało się pobrać użytkowników dla uwag: %s", ex)
+            osoby = {}
     return _map_notes(notes, kategorie, osoby)
 
 
@@ -1238,28 +1491,147 @@ async def async_setup(hass: HomeAssistant, config: Dict[str, Any]) -> bool:
             _LOGGER.error("Failed to authenticate")
             return False
 
+    def _is_librus_client(obj) -> bool:
+        return (
+            isinstance(obj, LibrusApiClient)
+            or getattr(obj, "__class__", None).__name__ == "LibrusApiClient"
+            or hasattr(obj, "async_get_messages")
+        )
+
+    async def handle_get_message(call):
+        """Obsluga wywolania pobierania wiadomosci."""
+        url = call.data.get("url")
+        if not url:
+            _LOGGER.error("Brak URL wiadomosci")
+            return {"content": None, "error": "Brak URL wiadomosci"}
+
+        entity_id = call.data.get("entity_id")
+        client = None
+
+        # 1. Jesli podano jawne entity_id (np. sensor wiadomosci danego ucznia)
+        if entity_id:
+            try:
+                from homeassistant.helpers import entity_registry as er
+                ent_reg = er.async_get(hass)
+                reg_entry = ent_reg.async_get(entity_id)
+                cfg_id = getattr(reg_entry, "config_entry_id", None)
+                if cfg_id:
+                    candidate = hass.data.get(DOMAIN, {}).get(cfg_id)
+                    if _is_librus_client(candidate):
+                        client = candidate
+            except Exception as ex:
+                _LOGGER.debug("Nie udalo sie dopasowac klienta po entity_id %s: %s", entity_id, ex)
+
+        # 2. Jesli nie wskazano klienta jawnie, sprobuj dopasowac ucznia po URL wiadomosci
+        if not client:
+            for entry_id, entry_data in hass.data.get(DOMAIN, {}).items():
+                if _is_librus_client(entry_data):
+                    # Sprawdz czy URL jest w cache wiadomosci tego klienta
+                    if url in getattr(entry_data, "_message_cache", {}):
+                        client = entry_data
+                        break
+                    # Lub w pobranych danych koordynatora
+                    coord = getattr(entry_data, "coordinator", None)
+                    if coord and getattr(coord, "data", None):
+                        msgs = coord.data.get("wiadomosci", [])
+                        if any(isinstance(m, dict) and m.get("href") == url for m in msgs):
+                            client = entry_data
+                            break
+
+        # 3. Fallback: wez pierwszego zarejestrowanego klienta (np. pojedynczy uczen lub archiwalny URL)
+        if not client:
+            for entry_id, entry_data in hass.data.get(DOMAIN, {}).items():
+                if _is_librus_client(entry_data):
+                    client = entry_data
+                    break
+
+        if not client:
+            _LOGGER.error("Brak skonfigurowanego klienta Librus")
+            return {"content": None, "error": "Brak skonfigurowanego klienta Librus"}
+
+        if not client._client or not client._token:
+            if not await client.async_authenticate():
+                _LOGGER.error("Nie udalo sie uwierzytelnic")
+                return {"content": None, "error": "Nie udalo sie uwierzytelnic klienta"}
+
+        try:
+            from librus_apix.messages import message_content
+            from contextlib import nullcontext
+            import asyncio
+            loop = asyncio.get_running_loop()
+            lock = getattr(client, "_session_lock", None) or nullcontext()
+            async with lock:
+                msg_data = await loop.run_in_executor(None, message_content, client._client, url)
+
+            content_str = msg_data.content if hasattr(msg_data, 'content') else str(msg_data)
+            _LOGGER.info("Pobrano wiadomosc z %s", url)
+
+            # Fire event to let user know message was read
+            hass.bus.async_fire(
+                f"{DOMAIN}_message_read",
+                {"url": url, "content": content_str}
+            )
+
+            return {"content": content_str}
+        except Exception as ex:
+            _LOGGER.error("Blad pobierania wiadomosci %s: %s", url, ex)
+            return {"content": None, "error": str(ex)}
+
+    hass.services.async_register(
+        DOMAIN,
+        "get_message",
+        handle_get_message,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Librus APIX from a config entry."""
+    try:
+        import soupsieve
+        ss_ver = str(getattr(soupsieve, "__version__", ""))
+        if ss_ver in ("3.0", "3.0.0"):
+            _LOGGER.error(
+                "Wykryto wadliwą wersję biblioteki soupsieve (%s). Powoduje ona brak ocen (Issue #39). "
+                "Zaktualizuj bibliotekę soupsieve do wersji 3.0.1+ lub przeładuj zależności integracji.",
+                ss_ver,
+            )
+    except Exception:
+        pass
+
     username = entry.data[CONF_USERNAME]
     password = entry.data[CONF_PASSWORD]
     options = entry.options
     
-    client = LibrusApiClient(username, password, options)
+    client = LibrusApiClient(username, password, options, hass=hass)
     
-    # Test authentication
-    if not await client.async_authenticate():
-        _LOGGER.error("Failed to authenticate")
-        return False
+    await client.async_init_cache()
     
     entry.async_on_unload(entry.add_update_listener(update_listener))
     
     from .sensor import LibrusDataUpdateCoordinator
     coordinator = LibrusDataUpdateCoordinator(hass, client)
-    await coordinator.async_config_entry_first_refresh()
     client.coordinator = coordinator
+    await coordinator.async_init_study_store(entry.entry_id)
+
+    # Spróbuj załadować cache całego stanu z dysku dla natychmiastowego startu
+    cached_data = await coordinator.async_load_cached_data()
+    if cached_data:
+        coordinator.seed_seen_from_cached_data(cached_data)
+        coordinator.async_set_updated_data(cached_data)
+        entry.async_create_background_task(
+            hass,
+            coordinator.async_refresh(),
+            name=f"{DOMAIN}_{entry.entry_id}_startup_refresh",
+        )
+    else:
+        # Pierwsze uruchomienie bez cache - autoryzacja i pełne pobranie
+        if not await client.async_authenticate():
+            _LOGGER.error("Failed to authenticate")
+            return False
+        await coordinator.async_config_entry_first_refresh()
     
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = client
@@ -1272,6 +1644,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    client = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if client and getattr(client, "_bg_fetch_task", None) and not client._bg_fetch_task.done():
+        client._bg_fetch_task.cancel()
+
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     
     if unload_ok:
