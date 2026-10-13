@@ -18,6 +18,9 @@ W najnowszej wersji wprowadziliśmy także wsparcie dla **Sztucznej Inteligencji
 - 📢 **Ogłoszenia** - odczyt szkolnej tablicy ogłoszeń
 - 👨‍🎓 **Frekwencja** - monitorowanie spóźnień i nieobecności
 
+> 🚀 **Kreator Dashboardu Online:** Możesz wygenerować spersonalizowany panel dla dowolnej liczby uczniów bez uruchamiania skryptów, bezpośrednio w przeglądarce:  
+> 👉 **[Otwórz Kreator Dashboardu Online](https://procaktomasz.github.io/LibrusSynergiaHA/)**
+
 ---
 
 ## 📦 Instalacja
