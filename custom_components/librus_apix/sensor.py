@@ -322,10 +322,14 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                 
                 # Restore from cache if failed
                 if plan_lekcji_raw is None:
-                    cached_data = await self.store.async_load()
-                    if cached_data and "plan_lekcji" in cached_data:
-                        plan_lekcji_raw = cached_data["plan_lekcji"]
-                        _LOGGER.warning("Nie udało się pobrać planu lekcji. Używam danych z cache.")
+                    if self.data and "plan_lekcji" in self.data:
+                        plan_lekcji_raw = self.data["plan_lekcji"]
+                        _LOGGER.warning("Nie udało się pobrać planu lekcji. Używam danych z pamięci.")
+                    else:
+                        cached_data = await self.store.async_load()
+                        if cached_data and "plan_lekcji" in cached_data:
+                            plan_lekcji_raw = cached_data["plan_lekcji"]
+                            _LOGGER.warning("Nie udało się pobrać planu lekcji. Używam danych z cache dyskowego.")
 
                 frekwencja_raw = await self.client.async_get_attendance()
                 ogloszenia_raw = await self.client.async_get_announcements()
@@ -436,23 +440,23 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                                 score = 0
                                 
                                 # Dopasowanie po nazwie przedmiotu (WAGA: 2)
-                            if ev_subject and lekcja.get("przedmiot"):
-                                if ev_subject.lower() in lekcja["przedmiot"].lower() or lekcja["przedmiot"].lower() in ev_subject.lower():
-                                    score += 2
-                                    
-                            # Dopasowanie po numerze lekcji (WAGA: 5 - priorytet dla zastępstw)
-                            if ev_num and lekcja.get("numer"):
-                                try:
-                                    # Terminarz moze zwrocic "4", "4-5"
-                                    if str(lekcja["numer"]) in str(ev_num).split("-"):
-                                        score += 5
-                                except Exception as ex:
-                                    _LOGGER.debug("Błąd podczas dopasowywania numeru lekcji ze zdarzenia: %s", ex)
-                            
-                            if score > 0:
-                                scored_lekcje.append((score, lekcja))
-                                if score > max_score:
-                                    max_score = score
+                                if ev_subject and lekcja.get("przedmiot"):
+                                    if ev_subject.lower() in lekcja["przedmiot"].lower() or lekcja["przedmiot"].lower() in ev_subject.lower():
+                                        score += 2
+                                        
+                                # Dopasowanie po numerze lekcji (WAGA: 5 - priorytet dla zastępstw)
+                                if ev_num and lekcja.get("numer"):
+                                    try:
+                                        # Terminarz moze zwrocic "4", "4-5"
+                                        if str(lekcja["numer"]) in str(ev_num).split("-"):
+                                            score += 5
+                                    except Exception as ex:
+                                        _LOGGER.debug("Błąd podczas dopasowywania numeru lekcji ze zdarzenia: %s", ex)
+                                
+                                if score > 0:
+                                    scored_lekcje.append((score, lekcja))
+                                    if score > max_score:
+                                        max_score = score
                                     
                         # Przypisz zdarzenie tylko do lekcji z najwyzszym wynikiem
                         if max_score > 0:

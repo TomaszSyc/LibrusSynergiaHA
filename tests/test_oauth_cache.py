@@ -1,6 +1,6 @@
 """Testy optymalizacji zapytań OAuth oraz limitu czasu sesji HTTP."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import pytest
 
 from custom_components.librus_apix.__init__ import _ensure_oauth, LibrusApiClient
@@ -103,3 +103,26 @@ async def test_session_request_has_timeout():
     mock_session.request("GET", "https://synergia.librus.pl")
     orig_request.assert_called_once()
     assert orig_request.call_args[1].get("timeout") == 15
+
+
+async def test_keepalive_disables_session_close():
+    """Upewnij się, że sesja nie jest przedwcześnie zamykana przez wyjście z kontekstu with."""
+    api_client = LibrusApiClient("test_user", "test_pass")
+    mock_librus_client = MagicMock()
+    mock_session = MagicMock()
+    orig_close = MagicMock()
+    mock_session.close = orig_close
+    mock_librus_client._session = mock_session
+
+    with patch("custom_components.librus_apix.__init__.new_client", return_value=mock_librus_client):
+        mock_librus_client.get_token.return_value = MagicMock(account="test")
+        await api_client.async_authenticate()
+
+    # close zostało zastąpione funkcją no-op
+    assert mock_session.close != orig_close
+    mock_session.close()
+    orig_close.assert_not_called()
+
+    # Dopiero _reset_auth zamyka oryginalną sesję
+    api_client._reset_auth()
+    orig_close.assert_called_once()

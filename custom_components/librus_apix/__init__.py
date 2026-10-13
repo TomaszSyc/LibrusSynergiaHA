@@ -396,6 +396,13 @@ class LibrusApiClient:
 
     def _reset_auth(self) -> None:
         """Reset authentication state to force re-authentication on next call."""
+        orig_close = getattr(self, "_orig_session_close", None)
+        if orig_close and self._client and hasattr(self._client, "_session"):
+            try:
+                orig_close()
+            except Exception:
+                pass
+        self._orig_session_close = None
         self._client = None
         self._token = None
 
@@ -411,6 +418,12 @@ class LibrusApiClient:
                         kwargs.setdefault("timeout", 15)
                         return _orig_request(*args, **kwargs)
                     self._client._session.request = _request_with_timeout
+
+                    # Keep-Alive: zapobieganie zamykaniu puli połączeń TCP/TLS przez 'with self._session as s:'
+                    if hasattr(self._client._session, "close") and not getattr(self, "_orig_session_close", None):
+                        self._orig_session_close = self._client._session.close
+                        self._client._session.close = lambda: None
+
                 self._token = await loop.run_in_executor(
                     None, self._client.get_token, self.username, self.password
                 )
@@ -430,11 +443,33 @@ class LibrusApiClient:
                         return None
                 client = self._client
 
-                from librus_apix.grades import get_grades
+                def _fetch_grades_data():
+                    html = client.post(
+                        client.GRADES_URL, data={"zmiany_logowanie_wszystkie": "1"}
+                    ).text
+                    from bs4 import BeautifulSoup
+                    from librus_apix.grades import (
+                        no_access_check,
+                        _extract_grades_numeric,
+                        _extract_grades_descriptive,
+                        ParseError,
+                    )
+                    soup = no_access_check(BeautifulSoup(html, "lxml"))
+                    tr = soup.find_all("tr", attrs={"class": ["line0", "line1"], "id": None})
+                    if len(tr) < 1:
+                        raise ParseError("Error in parsing grades")
+                    num_grades, avg_grades = _extract_grades_numeric(tr)
+                    desc_grades = _extract_grades_descriptive(tr)
+                    try:
+                        point_grades = _parse_point_grades(html)
+                    except Exception as pt_ex:
+                        _LOGGER.debug("Nie udało się odczytać ocen punktowych: %s", pt_ex)
+                        point_grades = []
+                    return num_grades, avg_grades, desc_grades, point_grades
 
                 loop = asyncio.get_running_loop()
-                numeric_grades, average_grades, descriptive_grades = await loop.run_in_executor(
-                    None, get_grades, client, "all"
+                numeric_grades, average_grades, descriptive_grades, point_grades = await loop.run_in_executor(
+                    None, _fetch_grades_data
                 )
 
                 current_sem = _current_semester()
@@ -536,19 +571,10 @@ class LibrusApiClient:
                                     'type': 'descriptive'
                                 })
 
-                # Oceny punktowe (sekcja "Oceny punktowe", np. 0-100) - librus-apix je pomija
-                try:
-                    html = await loop.run_in_executor(
-                        None,
-                        lambda: client.post(
-                            client.GRADES_URL, data={"zmiany_logowanie_wszystkie": "1"}
-                        ).text,
-                    )
-                    for g in _parse_point_grades(html):
-                        if g["semester"] == current_sem:
-                            all_grades.append(g)
-                except Exception as ex:  # best-effort: nie psuje zwyklych ocen
-                    _LOGGER.warning("Nie udalo sie odczytac ocen punktowych: %s", ex)
+                # Oceny punktowe pobrane z tego samego żądania
+                for g in point_grades:
+                    if g.get("semester") == current_sem:
+                        all_grades.append(g)
 
                 return all_grades
 
@@ -562,11 +588,13 @@ class LibrusApiClient:
                     _LOGGER.error("Failed to get grades after re-authentication.")
                     return None
             except Exception as ex:
+                if type(ex).__name__ == "ParseError":
+                    _LOGGER.debug("Brak lub błąd parsowania ocen (np. konto bez dostępu do ocen): %s", ex)
+                    return []
                 _LOGGER.error(
                     "Failed to get grades (attempt %d/2): %s\n%s",
                     attempt + 1, ex, traceback.format_exc(),
                 )
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -640,7 +668,6 @@ class LibrusApiClient:
                     "Failed to get messages (attempt %d/2): %s\n%s",
                     attempt + 1, ex, traceback.format_exc(),
                 )
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -678,7 +705,6 @@ class LibrusApiClient:
                     "Failed to get homework (attempt %d/2): %s\n%s",
                     attempt + 1, ex, traceback.format_exc(),
                 )
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -734,6 +760,7 @@ class LibrusApiClient:
                                     "numer_lekcji": ev.number,
                                     "szczegoly": szczegoly,
                                     "href": ev.href,
+                                    "data_dodania": getattr(ev, "add_date", ""),
                                 })
                     return sorted(events, key=lambda e: e["data"])
 
@@ -753,7 +780,6 @@ class LibrusApiClient:
                     "Failed to get schedule (attempt %d/2): %s\n%s",
                     attempt + 1, ex, traceback.format_exc(),
                 )
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -1126,7 +1152,6 @@ class LibrusApiClient:
                     "Failed to get timetable (attempt %d/2): %s\n%s",
                     attempt + 1, ex, traceback.format_exc(),
                 )
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -1157,7 +1182,6 @@ class LibrusApiClient:
                     "Failed to get student information (attempt %d/2): %s\n%s",
                     attempt + 1, ex, traceback.format_exc(),
                 )
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -1195,7 +1219,6 @@ class LibrusApiClient:
                 if type(ex).__name__ == "ParseError":
                     return []
                 _LOGGER.error("Failed to get attendance (attempt %d/2): %s", attempt + 1, ex)
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -1230,7 +1253,6 @@ class LibrusApiClient:
                 if type(ex).__name__ == "ParseError":
                     return []
                 _LOGGER.error("Failed to get announcements (attempt %d/2): %s", attempt + 1, ex)
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
@@ -1253,7 +1275,6 @@ class LibrusApiClient:
                         return None
                 client = self._client
 
-                from librus_apix.completed_lessons import get_max_page_number
                 from datetime import date as _date, timedelta
 
                 today = _date.today()
@@ -1261,26 +1282,44 @@ class LibrusApiClient:
                 date_to = today.strftime("%Y-%m-%d")
 
                 def _fetch_all_pages():
-                    max_pages = get_max_page_number(client, date_from, date_to)
+                    data0 = {
+                        "data1": date_from,
+                        "data2": date_to,
+                        "filtruj_id_przedmiotu": -1,
+                        "numer_strony1001": 0,
+                        "porcjowanie_pojemnik1001": 1001,
+                    }
+                    html0 = client.post(client.COMPLETED_LESSONS_URL, data=data0).text
+                    from bs4 import BeautifulSoup
+                    import re
+                    max_pages = 0
+                    try:
+                        soup = BeautifulSoup(html0, "lxml")
+                        pages_elem = soup.select_one("div.pagination > span")
+                        if pages_elem:
+                            txt = pages_elem.text.replace("\xa0", "")
+                            m = re.search(r"z(\d+)", txt)
+                            if m:
+                                max_pages = int(m.group(1))
+                    except Exception:
+                        max_pages = 0
+
                     lessons = []
                     seen = set()
-                    for page in range(min(max_pages, 9) + 1):
-                        html = client.post(
-                            client.COMPLETED_LESSONS_URL,
-                            data={
-                                "data1": date_from,
-                                "data2": date_to,
-                                "filtruj_id_przedmiotu": -1,
-                                "numer_strony1001": page,
-                                "porcjowanie_pojemnik1001": 1001,
-                            },
-                        ).text
-                        for lesson in _parse_completed_lessons(html):
-                            key = (lesson["data"], lesson["numer"], lesson["przedmiot"], lesson["temat"])
-                            if key in seen:
-                                continue
+                    for lesson in _parse_completed_lessons(html0):
+                        key = (lesson["data"], lesson["numer"], lesson["przedmiot"], lesson["temat"])
+                        if key not in seen:
                             seen.add(key)
                             lessons.append(lesson)
+
+                    for page in range(1, min(max_pages, 9) + 1):
+                        data_p = dict(data0, numer_strony1001=page)
+                        html_p = client.post(client.COMPLETED_LESSONS_URL, data=data_p).text
+                        for lesson in _parse_completed_lessons(html_p):
+                            key = (lesson["data"], lesson["numer"], lesson["przedmiot"], lesson["temat"])
+                            if key not in seen:
+                                seen.add(key)
+                                lessons.append(lesson)
                     return lessons
 
                 loop = asyncio.get_running_loop()
@@ -1305,7 +1344,6 @@ class LibrusApiClient:
                     "Failed to get completed lessons (attempt %d/2): %s\n%s",
                     attempt + 1, ex, traceback.format_exc(),
                 )
-                self._reset_auth()
                 if attempt == 1:
                     return None
 
