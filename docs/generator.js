@@ -42,7 +42,7 @@ function planNextTpl(p) {
 ### {{ 'Dziś' if d.data == today else ('Jutro' if d.data == jutro else d.dzien_tygodnia) }} · {{ d.lekcje[0].godzina_od }}–{{ d.lekcje[-1].godzina_do }}
 | | Godz. | Przedmiot | Sala |
 |---|---|---|---|
-{% for l in d.lekcje %}{% set teraz = d.data == today and l.godzina_od <= hm < l.godzina_do %}{% set ev = (l.get('zdarzenie') or '') | lower %}| {{ '▶' if teraz else (l.numer if l.numer is not none else 0) }} | {{ l.godzina_od }} | {% if l.get('odwolana') %}~~{{ l.przedmiot }}~~ ❌{% elif l.get('zastepstwo') %}**{{ l.przedmiot }}** 🔄{% else %}**{{ l.przedmiot }}**{% endif %}{% if l.get('dzd') %} <small>*dodatkowe*</small>{% endif %}{% if 'sprawdzian' in ev %} 🔴{% elif 'kartk' in ev %} 🟠{% elif ev %}} 🔵{% endif %} | {{ (l.get('sala') or '') | replace('s. ','') }} |
+{% for l in d.lekcje %}{% set teraz = d.data == today and l.godzina_od <= hm < l.godzina_do %}{% set ev = (l.get('zdarzenie') or '') | lower %}| {{ '▶' if teraz else (l.numer if l.numer is not none else 0) }} | {{ l.godzina_od }} | {% if l.get('odwolana') %}~~{{ l.przedmiot }}~~ ❌{% elif l.get('zastepstwo') %}**{{ l.przedmiot }}** 🔄{% else %}**{{ l.przedmiot }}**{% endif %}{% if l.get('dzd') %} <small>*dodatkowe*</small>{% endif %}{% if 'sprawdzian' in ev %} 🔴{% elif 'kartk' in ev %} 🟠{% elif ev %} 🔵{% endif %} | {{ (l.get('sala') or '') | replace('s. ','') }} |
 {% endfor %}{% endif %}`;
 }
 
@@ -61,7 +61,7 @@ function ostatnieOcenyTpl(p, n = 6) {
 {% for prz, lst in o.items() %}{% for g in lst %}{% set ns.l = ns.l + [{'p': prz, 'o': g.ocena, 'd': g.data, 'k': g.kategoria, 'n': g.jest_nowa, 'op': g.get('opis', '')}] %}{% endfor %}{% endfor %}
 ${KOL}
 {% for g in (ns.l | sort(attribute='d', reverse=true))[:${n}] %}<font color="{{ kol.get(g.o[:1], '#9e9e9e') }}"><b>{{ g.o }}</b></font> **{{ g.p }}**{% if g.op %} – {{ g.op }}{% endif %} <small>{{ g.k }} · {{ g.d[8:10] }}.{{ g.d[5:7] }}</small>{{ ' 🆕' if g.n }}<br>
-{% else %}}Brak ocen w tym semestrze.{% endfor %}`;
+{% else %}Brak ocen w tym semestrze.{% endfor %}`;
 }
 
 function tabelaOcenTpl(p) {
@@ -77,9 +77,9 @@ function planTygodniaTpl(p) {
   return `{% set dni = state_attr('sensor.${p}_plan_lekcji', 'kolejne_7_dni') or [] %}
 {% for d in dni if d.lekcje | length > 0 %}
 #### {{ d.dzien_tygodnia }} {{ d.data[8:10] }}.{{ d.data[5:7] }} <small>· {{ d.lekcje[0].godzina_od }}–{{ d.lekcje[-1].godzina_do }}</small>
-{% for l in d.lekcje %}{% set ev = (l.get('zdarzenie') or '') | lower %}\`{{ l.godzina_od }}\` {% if l.get('odwolana') %}~~{{ l.przedmiot }}~~ ❌{% elif l.get('zastepstwo') %}**{{ l.przedmiot }}** 🔄{% else %}{{ l.przedmiot }}{% endif %}{% if l.get('dzd') %} <small>*dodatkowe*</small>{% endif %}{% if 'sprawdzian' in ev %} 🔴{% elif 'kartk' in ev %} 🟠{% elif ev %}} 🔵{% endif %} <small>{{ (l.get('sala') or '') | replace('s. ','') }}</small><br>
+{% for l in d.lekcje %}{% set ev = (l.get('zdarzenie') or '') | lower %}\`{{ l.godzina_od }}\` {% if l.get('odwolana') %}~~{{ l.przedmiot }}~~ ❌{% elif l.get('zastepstwo') %}**{{ l.przedmiot }}** 🔄{% else %}{{ l.przedmiot }}{% endif %}{% if l.get('dzd') %} <small>*dodatkowe*</small>{% endif %}{% if 'sprawdzian' in ev %} 🔴{% elif 'kartk' in ev %} 🟠{% elif ev %} 🔵{% endif %} <small>{{ (l.get('sala') or '') | replace('s. ','') }}</small><br>
 {% endfor %}
-{% else %}}Brak lekcji w najbliższym tygodniu.{% endfor %}`;
+{% else %}Brak lekcji w najbliższym tygodniu.{% endfor %}`;
 }
 
 function tematyLekcjiTpl(p) {
@@ -88,14 +88,14 @@ function tematyLekcjiTpl(p) {
 #### {{ lista[0].dzien_tygodnia }} {{ dzien[8:10] }}.{{ dzien[5:7] }}
 {% for l in lista %}\`{{ l.numer if l.numer is not none else '–' }}\` **{{ l.przedmiot }}**{% if l.zastepstwo %} 🔄 <small>{{ l.zastepca }}</small>{% endif %}{% if l.obecnosc in ['nb', 'u', 'sp', 'zw'] %} ❗**{{ l.obecnosc }}**{% endif %} – {{ l.temat | replace('\\n', ' ') }}<br>
 {% endfor %}
-{% else %}}Brak zrealizowanych lekcji w ostatnich 7 dniach.{% endfor %}`;
+{% else %}Brak zrealizowanych lekcji w ostatnich 7 dniach.{% endfor %}`;
 }
 
 function wiadomosciTpl(p) {
   return `{% set m = state_attr('sensor.${p}_wiadomosci','wiadomosci') or [] %}
 {% for x in m if x.temat and x.temat != 'Brak' %}{{ '🔴' if x.nieprzeczytana else '⚪' }} **{{ x.temat | trim }}**{{ ' 📎' if x.ma_zalacznik }}<br><small>{{ x.nadawca.split(' (')[0] }} · {{ x.data[8:10] }}.{{ x.data[5:7] }} {{ x.data[11:16] }}</small>{% if x.tresc %}<details><summary>Treść</summary>{{ x.tresc }}</details>{% endif %}
 
-{% else %}}Brak wiadomości.{% endfor %}`;
+{% else %}Brak wiadomości.{% endfor %}`;
 }
 
 function ogloszeniaTpl(p) {
@@ -103,14 +103,14 @@ function ogloszeniaTpl(p) {
 
 {{ a.opis }}
 </details>
-{% else %}}Brak ogłoszeń.{% endfor %}`;
+{% else %}Brak ogłoszeń.{% endfor %}`;
 }
 
 function uwagiTpl(p) {
   return `{% set u = state_attr('sensor.${p}_uwagi','lista_uwag') or [] %}{% set ik = {'Positive':'🟢','Negative':'🔴','Neutral':'⚪'} %}
 {% for x in u %}{{ ik.get(x.typ, '⚪') }} **{{ x.data[8:10] }}.{{ x.data[5:7] }}** <small>{{ x.kategoria }}{{ ' · ' ~ x.nauczyciel if x.nauczyciel }}</small><br>{{ x.tresc }}
 
-{% else %}}Brak uwag ✅{% endfor %}`;
+{% else %}Brak uwag ✅{% endfor %}`;
 }
 
 function aiWeeklyReportTpl(p) {
