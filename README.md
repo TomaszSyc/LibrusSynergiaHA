@@ -81,6 +81,7 @@ Integracja tworzy następujące sensory i encje:
 | `sensor.librus_[uczen]_srednia_ocen` | **Globalna średnia** ze wszystkich przedmiotów | float (wykres 📈) |
 | `sensor.librus_[uczen]_wiadomosci` | Ostatnie wiadomości (domyślnie 10, konfigurowalne) | liczba nieprzeczytanych |
 | `sensor.librus_[uczen]_uwagi` | (NOWOŚĆ) Uwagi o zachowaniu (pozytywne, negatywne, neutralne) | liczba uwag |
+| `sensor.librus_[uczen]_zachowanie` | (NOWOŚĆ v3.0.1) Punkty i oceny z zachowania (startowe, suma okres 1 i 2, oceny przewidywane i roczne oraz szczegółowe wpisy punktowe) | punkty zachowania lub ocena |
 | `sensor.librus_[uczen]_<przedmiot>` | Oceny z danego przedmiotu (np. `sensor.librus_matematyka`) | lista ocen: "4, 3+, 5" |
 | `sensor.librus_[uczen]_srednia_<przedmiot>` | **Średnia** z danego przedmiotu | float (wykres 📈) |
 | `sensor.librus_[uczen]_plan_lekcji` | Plan lekcji na pełne 7 dni z rozbiciem na dni tygodnia i zastępstwa | - |
@@ -820,8 +821,12 @@ MIT License - patrz [LICENSE](LICENSE)
 ## 📝 Historia Zmian
 
 ### v3.0.1
+- 🌟 **Sensor Zachowania (Issue #40)**: Dodano dedykowaną encję `sensor.librus_[uczen]_zachowanie` odczytującą punktację zachowania (punkty startowe, suma dla okresu 1 i 2), oceny przewidywane i śródroczne/roczne oraz szczegółową historię wpisów punktowych z kategoriami, nauczycielami i komentarzami.
 - 🐛 **Poprawka planu lekcji (Issue #42)**: Naprawiono błąd wcięcia w fuzji planu lekcji – odległe zdarzenia z terminarza nie nadpisują już lekcji z bieżącego tygodnia (dzięki **@morbiasz**).
 - ⚙️ **Konfigurowalny interwał odpytywania (PR #44)**: Możliwość dostosowania częstotliwości odpytywania Librusa w opcjach integracji: osobno dla godzin szkolnych (7:00–16:00) oraz pozostałych godzin i weekendów (dzięki **@morbiasz**).
+- 🛡️ **Ochrona przed blokadą konta (Backoff)**: Wprowadzono wykładniczy mechanizm opóźniania ponownych prób logowania (od 5 min do 2 h) przy błędnym haśle oraz bramę jednokrotnego logowania w koordynatorze, zapobiegając lawinie nieudanych zapytań i blokadom konta.
+- ⚡ **Szybki start i ochrona nośników (SD)**: Rozdzielono pamięć podręczną na dane i metadane ze znacznikiem czasu. Przy szybkim restarcie HA świeży cache jest wykorzystywany od razu bez zapytań do Librusa. Duży plik stanu zapisywany jest na dysk wyłącznie przy faktycznej zmianie danych.
+- 🧹 **Czyste logi i eliminacja ostrzeżeń HA**: Wdrożono `_unrecorded_attributes` dla obszernych list atrybutów (eliminuje ostrzeżenia Recordera o przekroczeniu 16 KB i chroni bazę danych), asynchroniczne `async_fire` dla zdarzeń, statyczną strefę czasową w kalendarzu oraz zwięzłe logowanie błędów sieciowych z pełnym zrzutem stosu wyłącznie w trybie `DEBUG`.
 
 ### v3.0.0
 - 🤖 **Moduł Asystenta AI**: Automatyczne generowanie personalizowanych podsumowań tygodnia i dziennych wiadomości (z profilami dla rodzica i ucznia).

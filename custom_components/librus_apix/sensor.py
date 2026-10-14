@@ -1,7 +1,9 @@
 """Platforma czujników dla integracji Librus APIX."""
 
 import asyncio
+import json
 import logging
+import time
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -219,6 +221,15 @@ def _student_info_to_dict(info) -> Optional[Dict[str, Any]]:
     }
 
 
+def _zrzut_cache(data: Dict[str, Any]) -> Optional[str]:
+    """Tekstowy odcisk stanu do porownania z ostatnim zapisem (None gdy sie nie da)."""
+    try:
+        return json.dumps(data, sort_keys=True, default=str)
+    except Exception as ex:
+        _LOGGER.debug("Nie udało się porównać stanu z cache: %s", ex)
+        return None
+
+
 def _student_info_from_dict(data: Optional[Dict[str, Any]]):
     """Odtwórz obiekt StudentInformation ze słownika."""
     if not data or not isinstance(data, dict):
@@ -252,6 +263,11 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
         self._seen_note_ids: set = set()
         self._first_run: bool = True
         self.store = Store(hass, 1, f"{DOMAIN}_cache_{self.client.username}")
+        # Maly plik ze znacznikiem czasu ostatniego pobrania - zapisywany co cykl,
+        # zeby duzy cache mozna bylo zapisywac tylko przy zmianie danych.
+        self.meta_store = Store(hass, 1, f"{DOMAIN}_cache_meta_{self.client.username}")
+        self._cache_pobrano: Optional[float] = None
+        self._ostatni_zapis: Optional[str] = None
         self.study_store: Optional[Store] = None
         self.study_completed_uids: set = set()
         super().__init__(
@@ -283,6 +299,13 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             cached = await self.store.async_load()
             if isinstance(cached, dict) and "plan_lekcji" in cached and "oceny" in cached:
+                self._ostatni_zapis = _zrzut_cache(cached)
+                try:
+                    meta = await self.meta_store.async_load()
+                    if isinstance(meta, dict) and isinstance(meta.get("pobrano"), (int, float)):
+                        self._cache_pobrano = float(meta["pobrano"])
+                except Exception as meta_ex:
+                    _LOGGER.debug("Nie udało się wczytać znacznika czasu cache dla %s: %s", self.client.username, meta_ex)
                 if "student_info" in cached and isinstance(cached["student_info"], dict):
                     cached["student_info"] = _student_info_from_dict(cached["student_info"])
                 _LOGGER.debug("Pomyślnie załadowano pełny stan z dyskowego cache dla %s", self.client.username)
@@ -290,6 +313,12 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as ex:
             _LOGGER.debug("Nie udało się wczytać pełnego stanu z cache dla %s: %s", self.client.username, ex)
         return None
+
+    def wiek_cache(self) -> Optional[float]:
+        """Ile sekund temu dane z cache zostaly pobrane z Librusa (None gdy nie wiadomo)."""
+        if self._cache_pobrano is None:
+            return None
+        return time.time() - self._cache_pobrano
 
     def seed_seen_from_cached_data(self, data: Dict[str, Any]) -> None:
         """Zainicjalizuj zbiory widzianych elementów z cache, aby uniknąć fałszywych powiadomień."""
@@ -329,6 +358,13 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
 
         try:
             async with lock:
+                # Bez sesji najpierw jedno logowanie. Gdy sie nie uda, konczymy
+                # cykl - inaczej kazda metoda probowalaby logowac sie osobno.
+                if not getattr(self.client, "_client", None) or not getattr(self.client, "_token", None):
+                    if not await self.client.async_authenticate():
+                        raise UpdateFailed(
+                            "Nie udało się zalogować do Librusa - pomijam ten cykl odświeżania"
+                        )
                 student_info = await self.client.async_get_student_information()
                 grades = await self.client.async_get_grades()
                 messages_count = self.client.options.get("fetch_messages_count", 10)
@@ -554,7 +590,14 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
             try:
                 cache_copy = dict(result)
                 cache_copy["student_info"] = _student_info_to_dict(student_info)
-                await self.store.async_save(cache_copy)
+                # Pelny stan (duzy plik) zapisujemy tylko gdy dane sie zmienily -
+                # mniej zapisow na karte SD.
+                zrzut = _zrzut_cache(cache_copy)
+                if zrzut is None or zrzut != self._ostatni_zapis:
+                    await self.store.async_save(cache_copy)
+                    self._ostatni_zapis = zrzut
+                self._cache_pobrano = time.time()
+                await self.meta_store.async_save({"pobrano": self._cache_pobrano})
             except Exception as save_ex:
                 _LOGGER.debug("Nie udało się zapisać pełnego stanu do cache: %s", save_ex)
 
@@ -604,7 +647,7 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
             if href and href not in self._seen_message_hrefs:
                 self._seen_message_hrefs.add(href)
                 _LOGGER.debug("Nowa wiadomosc: %s", msg.get("title"))
-                self.hass.bus.fire(
+                self.hass.bus.async_fire(
                     EVENT_NOWA_WIADOMOSC,
                     {
                         "uczen": uczen,
@@ -620,7 +663,7 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
             if grade_id not in self._seen_grade_ids:
                 self._seen_grade_ids.add(grade_id)
                 _LOGGER.debug("Nowa ocena: %s %s", grade["subject"], grade["grade"])
-                self.hass.bus.fire(
+                self.hass.bus.async_fire(
                     EVENT_NOWA_OCENA,
                     {
                         "uczen": uczen,
@@ -647,7 +690,7 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                 continue
             self._seen_absence_ids.add(wpis)
             _LOGGER.debug("Nowy wpis frekwencji %s: %s lekcja %s", lekcja["obecnosc"], lekcja["data"], lekcja["numer"])
-            self.hass.bus.fire(
+            self.hass.bus.async_fire(
                 EVENT_NOWA_NIEOBECNOSC,
                 {
                     "uczen": uczen,
@@ -668,7 +711,7 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                 continue
             self._seen_note_ids.add(uwaga["id"])
             _LOGGER.debug("Nowa uwaga (%s) z %s", uwaga["rodzaj"], uwaga["data"])
-            self.hass.bus.fire(
+            self.hass.bus.async_fire(
                 EVENT_NOWA_UWAGA,
                 {
                     "uczen": uczen,
@@ -687,7 +730,7 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
             if ev_id not in self._seen_schedule_ids:
                 self._seen_schedule_ids.add(ev_id)
                 _LOGGER.debug("Nowe zdarzenie: %s %s %s", zdarzenie["data"], zdarzenie["przedmiot"], zdarzenie["tytul"])
-                self.hass.bus.fire(
+                self.hass.bus.async_fire(
                     EVENT_NOWE_ZDARZENIE,
                     {
                         "uczen": uczen,
@@ -731,7 +774,7 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
             if hw_id not in self._seen_homework_ids:
                 self._seen_homework_ids.add(hw_id)
                 _LOGGER.debug("Nowe zadanie: %s %s", zadanie["przedmiot"], zadanie["kategoria"])
-                self.hass.bus.fire(
+                self.hass.bus.async_fire(
                     EVENT_NOWE_ZADANIE,
                     {
                         "uczen": uczen,
@@ -741,6 +784,11 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                         "nauczyciel": zadanie["nauczyciel"],
                     },
                 )
+
+
+# _unrecorded_attributes w czujnikach: duze listy nie trafiaja do historii
+# (recorder) - mniejsza baza i brak ostrzezenia o atrybutach > 16 KB.
+# Atrybuty w stanie encji (karty, szablony) pozostaja bez zmian.
 
 
 def _device_info(coordinator: Optional[DataUpdateCoordinator], config_entry: ConfigEntry) -> Dict[str, Any]:
@@ -816,6 +864,8 @@ class LibrusSzczesliwyNumerekSensor(CoordinatorEntity, SensorEntity):
 class LibrusOcenySensor(CoordinatorEntity, SensorEntity):
     """Czujnik z wszystkimi ocenami pogrupowanymi wedlug przedmiotow."""
 
+    _unrecorded_attributes = frozenset({"oceny_wg_przedmiotu"})
+
     def __init__(self, coordinator: LibrusDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Inicjalizacja."""
         super().__init__(coordinator)
@@ -853,6 +903,8 @@ class LibrusOcenySensor(CoordinatorEntity, SensorEntity):
 
 class LibrusPrzedmiotSensor(CoordinatorEntity, SensorEntity):
     """Czujnik z ocenami dla konkretnego przedmiotu."""
+
+    _unrecorded_attributes = frozenset({"oceny"})
 
     def __init__(
         self,
@@ -997,6 +1049,8 @@ class LibrusSredniaPrzedmiotuSensor(CoordinatorEntity, SensorEntity):
 class LibrusTerminarzSensor(CoordinatorEntity, SensorEntity):
     """Czujnik z nadchodzacymi zdarzeniami z kalendarza Librusa (biezacy + nastepny miesiac)."""
 
+    _unrecorded_attributes = frozenset({"zdarzenia"})
+
     def __init__(self, coordinator: LibrusDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Inicjalizacja."""
         super().__init__(coordinator)
@@ -1031,6 +1085,8 @@ class LibrusTerminarzSensor(CoordinatorEntity, SensorEntity):
 class LibrusZadaniaSensor(CoordinatorEntity, SensorEntity):
     """Czujnik z nadchodzacymi zadaniami i sprawdzianami (30 dni do przodu)."""
 
+    _unrecorded_attributes = frozenset({"zadania"})
+
     def __init__(self, coordinator: LibrusDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Inicjalizacja."""
         super().__init__(coordinator)
@@ -1064,6 +1120,8 @@ class LibrusZadaniaSensor(CoordinatorEntity, SensorEntity):
 
 class LibrusWiadomosciSensor(CoordinatorEntity, SensorEntity):
     """Czujnik z wiadomosciami (temat i nadawca, bez pobierania tresci)."""
+
+    _unrecorded_attributes = frozenset({"wiadomosci"})
 
     def __init__(self, coordinator: LibrusDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Inicjalizacja."""
@@ -1124,6 +1182,19 @@ class LibrusWiadomosciSensor(CoordinatorEntity, SensorEntity):
 
 class LibrusPlanLekcjiSensor(CoordinatorEntity, SensorEntity):
     """Czujnik z planem lekcji na dzis i jutro."""
+
+    _unrecorded_attributes = frozenset({
+        "kolejne_7_dni",
+        "dzisiaj",
+        "jutro",
+        "poniedzialek",
+        "wtorek",
+        "sroda",
+        "czwartek",
+        "piatek",
+        "sobota",
+        "niedziela",
+    })
 
     def __init__(self, coordinator: LibrusDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Inicjalizacja."""
@@ -1192,6 +1263,8 @@ class LibrusPlanLekcjiSensor(CoordinatorEntity, SensorEntity):
 class LibrusFrekwencjaSensor(CoordinatorEntity, SensorEntity):
     """Czujnik frekwencji (nieobecnosci, spoznienia)."""
 
+    _unrecorded_attributes = frozenset({"lista_wpisow"})
+
     def __init__(self, coordinator: LibrusDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._config_entry = config_entry
@@ -1237,6 +1310,13 @@ class LibrusFrekwencjaSensor(CoordinatorEntity, SensorEntity):
 class LibrusTematyLekcjiSensor(CoordinatorEntity, SensorEntity):
     """Czujnik z tematami zrealizowanych lekcji (ostatnie 7 dni) i obecnoscia na kazdej lekcji."""
 
+    _unrecorded_attributes = frozenset({
+        "lekcje",
+        "dzisiaj",
+        "lekcje_ostatniego_dnia",
+        "nieobecnosci",
+    })
+
     def __init__(self, coordinator: LibrusDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._config_entry = config_entry
@@ -1273,6 +1353,8 @@ class LibrusTematyLekcjiSensor(CoordinatorEntity, SensorEntity):
 class LibrusUwagiSensor(CoordinatorEntity, SensorEntity):
     """Czujnik z uwagami (pozytywne, negatywne, neutralne)."""
 
+    _unrecorded_attributes = frozenset({"uwagi"})
+
     def __init__(self, coordinator: LibrusDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Inicjalizacja."""
         super().__init__(coordinator)
@@ -1306,6 +1388,8 @@ class LibrusUwagiSensor(CoordinatorEntity, SensorEntity):
 
 class LibrusZachowanieSensor(CoordinatorEntity, SensorEntity):
     """Czujnik ocen i punktów z zachowania."""
+
+    _unrecorded_attributes = frozenset({"wpisy"})
 
     def __init__(self, coordinator: LibrusDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Inicjalizacja."""
@@ -1367,6 +1451,8 @@ class LibrusZachowanieSensor(CoordinatorEntity, SensorEntity):
 class LibrusOgloszeniaSensor(CoordinatorEntity, SensorEntity):
     """Czujnik ogloszen szkolnych."""
 
+    _unrecorded_attributes = frozenset({"lista_ogloszen"})
+
     def __init__(self, coordinator: LibrusDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._config_entry = config_entry
@@ -1401,6 +1487,8 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 class LibrusAISummarySensor(RestoreEntity, SensorEntity):
     """Czujnik z wygenerowanym podsumowaniem AI."""
+
+    _unrecorded_attributes = frozenset({"pełny_tekst"})
 
     def __init__(self, *args, **kwargs) -> None:
         """Inicjalizacja."""
@@ -1471,6 +1559,8 @@ class LibrusAISummarySensor(RestoreEntity, SensorEntity):
 
 class LibrusAIMessagesSummarySensor(RestoreEntity, SensorEntity):
     """Czujnik przechowujący podsumowanie wiadomości z AI."""
+
+    _unrecorded_attributes = frozenset({"pełny_tekst"})
 
     def __init__(self, *args, **kwargs) -> None:
         """Inicjalizacja."""

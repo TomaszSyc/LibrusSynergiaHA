@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import re
-import traceback
+import time
 from datetime import date
 from typing import Any, Dict, List, Optional
 
@@ -13,14 +13,39 @@ from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
 
 from librus_apix.client import Client, new_client
 from librus_apix.exceptions import TokenError
 
-from .const import DOMAIN, SCAN_INTERVAL
+# Moduly ladowane razem z integracja: HA importuje ja w executorze, a import
+# wewnatrz funkcji async blokowalby petle zdarzen przy pierwszym uzyciu (start HA).
+import bs4  # noqa: F401
+import soupsieve  # noqa: F401
+import librus_apix.announcements  # noqa: F401
+import librus_apix.attendance  # noqa: F401
+import librus_apix.completed_lessons  # noqa: F401
+import librus_apix.grades  # noqa: F401
+import librus_apix.homework  # noqa: F401
+import librus_apix.messages  # noqa: F401
+import librus_apix.schedule  # noqa: F401
+import librus_apix.student_information  # noqa: F401
+import librus_apix.timetable  # noqa: F401
+
+from .const import DOMAIN
+from .sensor import LibrusDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _z_tracebackiem() -> bool:
+    """Traceback w logu bledu tylko przy wlaczonym debugu.
+
+    Gdy Librus nie odpowiada, kazda metoda loguje blad - pelne tracebacki
+    w kazdym cyklu zasmiecalyby log. Do diagnozy wystarczy wlaczyc debug.
+    """
+    return _LOGGER.isEnabledFor(logging.DEBUG)
 
 
 def _current_semester() -> int:
@@ -154,7 +179,7 @@ def _opis_oceny(desc: str) -> str:
                     opis.append(nxt.strip())
             break
     return " · ".join(x for x in opis if x)
-def _parse_point_grades(html: str) -> list:
+def _parse_point_grades(html) -> list:
     """Odczytaj oceny z sekcji "Oceny punktowe" strony ocen.
 
     librus_apix.grades.get_grades pomija te wiersze (maja mniej kolumn niz
@@ -169,7 +194,8 @@ def _parse_point_grades(html: str) -> list:
 
     from bs4 import BeautifulSoup
 
-    soup = BeautifulSoup(html, "lxml")
+    # html moze byc juz sparsowanym BeautifulSoup (jedno parsowanie strony ocen)
+    soup = BeautifulSoup(html, "lxml") if isinstance(html, (str, bytes)) else html
     result = []
     for img in soup.select('img[id^="przedmioty_OP_"]'):
         row = img.find_parent("tr")
@@ -218,7 +244,7 @@ def _parse_point_grades(html: str) -> list:
     return result
 
 
-def _parse_behavior_grades(html: str) -> Optional[dict]:
+def _parse_behavior_grades(html) -> Optional[dict]:
     """Odczytaj oceny i punkty zachowania ze strony ocen.
 
     Wyszukuje wiersz "Zachowanie" (np. znacznik z id 'przedmioty_zachowanie_node')
@@ -230,7 +256,8 @@ def _parse_behavior_grades(html: str) -> Optional[dict]:
     import re
     from bs4 import BeautifulSoup
 
-    soup = BeautifulSoup(html, "lxml")
+    # html moze byc juz sparsowanym BeautifulSoup (jedno parsowanie strony ocen)
+    soup = BeautifulSoup(html, "lxml") if isinstance(html, (str, bytes)) else html
 
     node = soup.select_one('#przedmioty_zachowanie_node')
     sub_table = soup.select_one('#przedmioty_zachowanie')
@@ -456,6 +483,11 @@ CONFIG_SCHEMA = vol.Schema(
 class LibrusApiClient:
     """Class to interface with the Librus API."""
 
+    # Blokada ponownego logowania po bledzie (sekundy): 5 min, 10, 20 ... max 2 h.
+    # Chroni konto przed seria nieudanych logowan (np. po zmianie hasla).
+    AUTH_BACKOFF_START = 300
+    AUTH_BACKOFF_MAX = 7200
+
     def __init__(self, username: str, password: str, options: dict = None, hass: HomeAssistant = None):
         """Initialize the client."""
         self.username = username
@@ -472,6 +504,9 @@ class LibrusApiClient:
         self._bg_fetch_task = None
         self.coordinator = None
         self._behavior_data = None
+        self._grades_attempted = False
+        self._auth_failures = 0
+        self._auth_blocked_until = 0.0
 
     async def async_init_cache(self) -> None:
         """Load cached message contents from persistent store."""
@@ -566,11 +601,17 @@ class LibrusApiClient:
         self._orig_session_close = None
         self._client = None
         self._token = None
-        self._behavior_data = None
 
     async def async_authenticate(self):
         """Authenticate with Librus API."""
         async with self._auth_lock:
+            now = time.monotonic()
+            if now < self._auth_blocked_until:
+                _LOGGER.debug(
+                    "Pomijam logowanie %s po wcześniejszym błędzie (ponowna próba za %d s)",
+                    self.username, int(self._auth_blocked_until - now),
+                )
+                return False
             try:
                 loop = asyncio.get_running_loop()
                 self._client = await loop.run_in_executor(None, new_client)
@@ -590,14 +631,26 @@ class LibrusApiClient:
                     None, self._client.get_token, self.username, self.password
                 )
                 _LOGGER.debug("Authentication successful for %s", self.username)
+                self._auth_failures = 0
+                self._auth_blocked_until = 0.0
                 return True
             except Exception as ex:
-                _LOGGER.error("Authentication failed: %s\n%s", ex, traceback.format_exc())
+                self._auth_failures += 1
+                blokada = min(
+                    self.AUTH_BACKOFF_START * 2 ** (self._auth_failures - 1),
+                    self.AUTH_BACKOFF_MAX,
+                )
+                self._auth_blocked_until = time.monotonic() + blokada
+                _LOGGER.error(
+                    "Authentication failed (%d z rzędu, kolejna próba najwcześniej za %d min): %s",
+                    self._auth_failures, blokada // 60, ex, exc_info=_z_tracebackiem(),
+                )
                 self._reset_auth()
                 return False
 
     async def async_get_grades(self):
         """Get grades from Librus."""
+        self._grades_attempted = True
         for attempt in range(2):
             try:
                 if not self._client or not self._token:
@@ -622,13 +675,15 @@ class LibrusApiClient:
                         raise ParseError("Error in parsing grades")
                     num_grades, avg_grades = _extract_grades_numeric(tr)
                     desc_grades = _extract_grades_descriptive(tr)
+                    # Ten sam soup dla ocen punktowych i zachowania - strona
+                    # ocen jest najwieksza, parsujemy ja tylko raz.
                     try:
-                        point_grades = _parse_point_grades(html)
+                        point_grades = _parse_point_grades(soup)
                     except Exception as pt_ex:
                         _LOGGER.debug("Nie udało się odczytać ocen punktowych: %s", pt_ex)
                         point_grades = []
                     try:
-                        behavior_data = _parse_behavior_grades(html)
+                        behavior_data = _parse_behavior_grades(soup)
                     except Exception as beh_ex:
                         _LOGGER.debug("Nie udało się odczytać zachowania: %s", beh_ex)
                         behavior_data = None
@@ -760,15 +815,20 @@ class LibrusApiClient:
                     _LOGGER.debug("Brak lub błąd parsowania ocen (np. konto bez dostępu do ocen): %s", ex)
                     return []
                 _LOGGER.error(
-                    "Failed to get grades (attempt %d/2): %s\n%s",
-                    attempt + 1, ex, traceback.format_exc(),
+                    "Failed to get grades: %s",
+                    ex, exc_info=_z_tracebackiem(),
                 )
-                if attempt == 1:
-                    return None
+                # Bez ponawiania: blad nie wynika z wygaslego tokena,
+                # druga proba tylko zdublowalaby zapytania. Ponowi nastepny cykl.
+                return None
 
     async def async_get_behavior(self) -> Optional[dict]:
-        """Pobierz dane ocen i punktów z zachowania ze strony ocen."""
-        if self._behavior_data is not None:
+        """Pobierz dane ocen i punktów z zachowania ze strony ocen.
+
+        Zachowanie jest na tej samej stronie co oceny. Jeśli oceny były już
+        pobierane (także nieudanie), nie wysyłamy drugiego zapytania.
+        """
+        if self._behavior_data is not None or self._grades_attempted:
             return self._behavior_data
         await self.async_get_grades()
         return self._behavior_data
@@ -840,11 +900,12 @@ class LibrusApiClient:
                     return None
             except Exception as ex:
                 _LOGGER.error(
-                    "Failed to get messages (attempt %d/2): %s\n%s",
-                    attempt + 1, ex, traceback.format_exc(),
+                    "Failed to get messages: %s",
+                    ex, exc_info=_z_tracebackiem(),
                 )
-                if attempt == 1:
-                    return None
+                # Bez ponawiania: blad nie wynika z wygaslego tokena,
+                # druga proba tylko zdublowalaby zapytania. Ponowi nastepny cykl.
+                return None
 
     async def async_get_homework(self):
         """Get upcoming homework assignments from Librus (next 30 days)."""
@@ -877,11 +938,12 @@ class LibrusApiClient:
                     return None
             except Exception as ex:
                 _LOGGER.error(
-                    "Failed to get homework (attempt %d/2): %s\n%s",
-                    attempt + 1, ex, traceback.format_exc(),
+                    "Failed to get homework: %s",
+                    ex, exc_info=_z_tracebackiem(),
                 )
-                if attempt == 1:
-                    return None
+                # Bez ponawiania: blad nie wynika z wygaslego tokena,
+                # druga proba tylko zdublowalaby zapytania. Ponowi nastepny cykl.
+                return None
 
     async def async_get_schedule(self):
         """Get upcoming calendar events from Librus (current + next month, filtered to future dates)."""
@@ -952,11 +1014,12 @@ class LibrusApiClient:
                     return None
             except Exception as ex:
                 _LOGGER.error(
-                    "Failed to get schedule (attempt %d/2): %s\n%s",
-                    attempt + 1, ex, traceback.format_exc(),
+                    "Failed to get schedule: %s",
+                    ex, exc_info=_z_tracebackiem(),
                 )
-                if attempt == 1:
-                    return None
+                # Bez ponawiania: blad nie wynika z wygaslego tokena,
+                # druga proba tylko zdublowalaby zapytania. Ponowi nastepny cykl.
+                return None
 
     async def async_get_dzd(self, date_from: str, date_to: str):
         """Pobierz zajęcia dodatkowe (DZD) z gateway API.
@@ -1324,11 +1387,12 @@ class LibrusApiClient:
                     _LOGGER.info("Brak planu lekcji w tym tygodniu (wakacje/brak danych). Zwracam pusty plan.")
                     return []
                 _LOGGER.error(
-                    "Failed to get timetable (attempt %d/2): %s\n%s",
-                    attempt + 1, ex, traceback.format_exc(),
+                    "Failed to get timetable: %s",
+                    ex, exc_info=_z_tracebackiem(),
                 )
-                if attempt == 1:
-                    return None
+                # Bez ponawiania: blad nie wynika z wygaslego tokena,
+                # druga proba tylko zdublowalaby zapytania. Ponowi nastepny cykl.
+                return None
 
     async def async_get_student_information(self):
         """Get student information from Librus."""
@@ -1354,11 +1418,12 @@ class LibrusApiClient:
                     return None
             except Exception as ex:
                 _LOGGER.error(
-                    "Failed to get student information (attempt %d/2): %s\n%s",
-                    attempt + 1, ex, traceback.format_exc(),
+                    "Failed to get student information: %s",
+                    ex, exc_info=_z_tracebackiem(),
                 )
-                if attempt == 1:
-                    return None
+                # Bez ponawiania: blad nie wynika z wygaslego tokena,
+                # druga proba tylko zdublowalaby zapytania. Ponowi nastepny cykl.
+                return None
 
     async def async_get_attendance(self):
         """Get attendance from Librus."""
@@ -1393,9 +1458,10 @@ class LibrusApiClient:
             except Exception as ex:
                 if type(ex).__name__ == "ParseError":
                     return []
-                _LOGGER.error("Failed to get attendance (attempt %d/2): %s", attempt + 1, ex)
-                if attempt == 1:
-                    return None
+                _LOGGER.error("Failed to get attendance: %s", ex)
+                # Bez ponawiania: blad nie wynika z wygaslego tokena,
+                # druga proba tylko zdublowalaby zapytania. Ponowi nastepny cykl.
+                return None
 
     async def async_get_announcements(self):
         """Get announcements from Librus."""
@@ -1427,9 +1493,10 @@ class LibrusApiClient:
             except Exception as ex:
                 if type(ex).__name__ == "ParseError":
                     return []
-                _LOGGER.error("Failed to get announcements (attempt %d/2): %s", attempt + 1, ex)
-                if attempt == 1:
-                    return None
+                _LOGGER.error("Failed to get announcements: %s", ex)
+                # Bez ponawiania: blad nie wynika z wygaslego tokena,
+                # druga proba tylko zdublowalaby zapytania. Ponowi nastepny cykl.
+                return None
 
     async def async_get_completed_lessons(self, days: int = 7):
         """Pobierz zrealizowane lekcje (tematy) z ostatnich `days` dni.
@@ -1519,11 +1586,12 @@ class LibrusApiClient:
                 if type(ex).__name__ == "ParseError":
                     return []
                 _LOGGER.error(
-                    "Failed to get completed lessons (attempt %d/2): %s\n%s",
-                    attempt + 1, ex, traceback.format_exc(),
+                    "Failed to get completed lessons: %s",
+                    ex, exc_info=_z_tracebackiem(),
                 )
-                if attempt == 1:
-                    return None
+                # Bez ponawiania: blad nie wynika z wygaslego tokena,
+                # druga proba tylko zdublowalaby zapytania. Ponowi nastepny cykl.
+                return None
 
     async def async_get_attendance_stats(self):
         """Pobierz wszystkie wpisy frekwencji (takze obecnosci) z gateway API.
@@ -1765,7 +1833,7 @@ async def async_setup(hass: HomeAssistant, config: Dict[str, Any]) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Librus APIX from a config entry."""
     try:
-        import soupsieve
+        import soupsieve  # juz zaladowany przy imporcie integracji - bez blokowania
         ss_ver = str(getattr(soupsieve, "__version__", ""))
         if ss_ver in ("3.0", "3.0.0"):
             _LOGGER.error(
@@ -1773,8 +1841,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "Zaktualizuj bibliotekę soupsieve do wersji 3.0.1+ lub przeładuj zależności integracji.",
                 ss_ver,
             )
-    except Exception:
-        pass
+    except Exception as ss_ex:
+        _LOGGER.debug("Nie udało się sprawdzić wersji soupsieve: %s", ss_ex)
 
     username = entry.data[CONF_USERNAME]
     password = entry.data[CONF_PASSWORD]
@@ -1786,7 +1854,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     entry.async_on_unload(entry.add_update_listener(update_listener))
     
-    from .sensor import LibrusDataUpdateCoordinator
     coordinator = LibrusDataUpdateCoordinator(hass, client)
     client.coordinator = coordinator
     await coordinator.async_init_study_store(entry.entry_id)
@@ -1796,11 +1863,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if cached_data:
         coordinator.seed_seen_from_cached_data(cached_data)
         coordinator.async_set_updated_data(cached_data)
-        entry.async_create_background_task(
-            hass,
-            coordinator.async_refresh(),
-            name=f"{DOMAIN}_{entry.entry_id}_startup_refresh",
-        )
+        wiek = coordinator.wiek_cache()
+        # update_interval moze byc None (odpytywanie wylaczone) - wtedy 0,
+        # czyli odswiezenie od razu jak przed zmiana.
+        interwal = coordinator.update_interval.total_seconds() if coordinator.update_interval else 0
+        if wiek is not None and 0 <= wiek < interwal:
+            # Dane sa swieze (np. szybki restart HA) - bez zapytan do Librusa
+            # przy starcie, odswiezenie dopiero gdy minie interwal od pobrania.
+            _LOGGER.debug(
+                "Cache %s sprzed %d s - pierwsze odświeżenie za %d s",
+                username, int(wiek), int(interwal - wiek),
+            )
+
+            async def _odswiez_po_starcie(_now) -> None:
+                await coordinator.async_refresh()
+
+            entry.async_on_unload(
+                async_call_later(hass, interwal - wiek, _odswiez_po_starcie)
+            )
+        else:
+            entry.async_create_background_task(
+                hass,
+                coordinator.async_refresh(),
+                name=f"{DOMAIN}_{entry.entry_id}_startup_refresh",
+            )
     else:
         # Pierwsze uruchomienie bez cache - autoryzacja i pełne pobranie
         if not await client.async_authenticate():

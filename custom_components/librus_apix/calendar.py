@@ -15,6 +15,11 @@ from .sensor import _device_info
 
 _LOGGER = logging.getLogger(__name__)
 
+# Strefa ladowana raz przy imporcie modulu (w executorze HA) - ZoneInfo przy
+# pierwszym uzyciu czyta plik, co w petli zdarzen HA zglasza jako blokujace.
+_STREFA_PL = zoneinfo.ZoneInfo("Europe/Warsaw")
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -54,7 +59,7 @@ class LibrusTimetableCalendar(CoordinatorEntity, CalendarEntity):
         if not events:
             return None
             
-        now = datetime.now(zoneinfo.ZoneInfo("Europe/Warsaw"))
+        now = datetime.now(_STREFA_PL)
         future_events = [e for e in events if e.start_datetime_local >= now]
         if future_events:
             return sorted(future_events, key=lambda e: e.start_datetime_local)[0]
@@ -66,7 +71,7 @@ class LibrusTimetableCalendar(CoordinatorEntity, CalendarEntity):
         data = self.coordinator.data or {}
         plan = data.get("plan_lekcji", [])
         
-        tz = zoneinfo.ZoneInfo("Europe/Warsaw")
+        tz = _STREFA_PL
         
         for day in plan:
             lekcje = day.get("lekcje", [])
@@ -158,7 +163,7 @@ class LibrusScheduleCalendar(CoordinatorEntity, CalendarEntity):
         if not events:
             return None
             
-        now = datetime.now(zoneinfo.ZoneInfo("Europe/Warsaw"))
+        now = datetime.now(_STREFA_PL)
         future_events = [e for e in events if e.start_datetime_local >= now]
         if future_events:
             return sorted(future_events, key=lambda e: e.start_datetime_local)[0]
@@ -170,7 +175,7 @@ class LibrusScheduleCalendar(CoordinatorEntity, CalendarEntity):
         terminarz = data.get("terminarz", [])
         
         plan = data.get("plan_lekcji", [])
-        tz = zoneinfo.ZoneInfo("Europe/Warsaw")
+        tz = _STREFA_PL
         
         for ev in terminarz:
             try:
