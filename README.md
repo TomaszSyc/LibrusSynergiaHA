@@ -64,7 +64,7 @@ Lub ręcznie:
 
 ### Opcje integracji i Asystent AI
 Po zainstalowaniu integracji możesz dostosować jej działanie klikając **"Konfiguruj"** na karcie integracji:
-* **Krok 1 (Ustawienia ogólne):** Liczba pobieranych wiadomości, włączenie pobierania pełnej treści oraz liczba dni wyprzedzenia dla przypomnień o sprawdzianach (moduł To-Do).
+* **Krok 1 (Ustawienia ogólne):** Liczba pobieranych wiadomości, włączenie pobierania pełnej treści oraz liczba dni wyprzedzenia dla przypomnień o sprawdzianach (moduł To-Do) oraz częstotliwość odpytywania Librusa: osobno w dni robocze 7:00–16:00 (domyślnie co 15 min, zakres 15–240) i w pozostałym czasie (domyślnie co 120 min, zakres 30–720). Większe wartości to mniej zapytań do Librusa.
 * **Krok 2 (Asystent AI):** Włączenie generowania raportów, wybór agenta konwersacyjnego HA (np. OpenAI, Google Gemini, Ollama) oraz pełna personalizacja promptów.
 
 ---
@@ -723,7 +723,7 @@ automation:
 
 ### ⏱️ 3. Zaawansowane: Własny harmonogram odpytywania Librusa
 
-Domyślnie integracja odświeża się adaptacyjnie (co 15 minut w godzinach szkolnych, rzadziej w nocy), ale nadal możesz wyłączyć wewnętrzny system i wymusić odpytywanie z własnych automatyzacji HA. Wyłącz "Włącz odpytywanie w poszukiwaniu aktualizacji" w opcjach integracji, a następnie dodaj:
+Domyślnie integracja odświeża się adaptacyjnie (co 15 minut w godzinach szkolnych, co 2 godziny w pozostałym czasie; oba interwały zmienisz w opcjach integracji), ale nadal możesz wyłączyć wewnętrzny system i wymusić odpytywanie z własnych automatyzacji HA. Wyłącz "Włącz odpytywanie w poszukiwaniu aktualizacji" w opcjach integracji, a następnie dodaj:
 
 ```yaml
 alias: "Librus - Dynamiczne Odpytywanie"

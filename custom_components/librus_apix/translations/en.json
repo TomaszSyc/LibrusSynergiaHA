@@ -26,7 +26,9 @@
         "data": {
           "fetch_messages_count": "Number of messages to fetch from Librus (higher number slows down startup, recommended ~10, max 25)",
           "fetch_messages_content": "Fetch full message content (Marks them as read in Librus system!)",
-          "days_before_exam_study": "How many days before exam to remind about studying? (0 = disabled)"
+          "days_before_exam_study": "How many days before exam to remind about studying? (0 = disabled)",
+          "scan_interval_school_minutes": "Polling interval on school days 7:00-16:00, in minutes (default 15, fewer requests to Librus with a higher value)",
+          "scan_interval_minutes": "Polling interval at other times and on weekends, in minutes (default 120)"
         }
       },
       "ai": {

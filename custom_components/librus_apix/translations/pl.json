@@ -26,7 +26,9 @@
         "data": {
           "fetch_messages_count": "Liczba pobieranych wiadomości z Librusa (im więcej, tym integracja dłużej się uruchamia, zalecane ok. 10, max 25)",
           "fetch_messages_content": "Pobieraj pełną treść wiadomości (Oznacza je jako przeczytane w systemie Librus!)",
-          "days_before_exam_study": "Ile dni przed sprawdzianem przypominać o nauce? (0 = wyłączone)"
+          "days_before_exam_study": "Ile dni przed sprawdzianem przypominać o nauce? (0 = wyłączone)",
+          "scan_interval_school_minutes": "Co ile minut odpytywać Librusa w dni robocze 7:00–16:00 (domyślnie 15; większa wartość = mniej zapytań)",
+          "scan_interval_minutes": "Co ile minut odpytywać Librusa poza tymi godzinami i w weekendy (domyślnie 120)"
         }
       },
       "ai": {

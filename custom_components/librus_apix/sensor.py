@@ -15,7 +15,13 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN, SCAN_INTERVAL
+from .const import (
+    CONF_SCAN_INTERVAL_OTHER,
+    CONF_SCAN_INTERVAL_SCHOOL,
+    DEFAULT_SCAN_INTERVAL_OTHER,
+    DEFAULT_SCAN_INTERVAL_SCHOOL,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -250,8 +256,17 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=SCAN_INTERVAL,
+            update_interval=self._interwal_odpytywania(datetime.now()),
         )
+
+    def _interwal_odpytywania(self, now: datetime) -> timedelta:
+        """Interwał odpytywania z opcji: osobno dni robocze 7-16 i pozostały czas."""
+        options = getattr(self.client, "options", None) or {}
+        if 7 <= now.hour < 16 and now.weekday() < 5:
+            minuty = options.get(CONF_SCAN_INTERVAL_SCHOOL, DEFAULT_SCAN_INTERVAL_SCHOOL)
+        else:
+            minuty = options.get(CONF_SCAN_INTERVAL_OTHER, DEFAULT_SCAN_INTERVAL_OTHER)
+        return timedelta(minutes=int(minuty))
 
     async def async_init_study_store(self, entry_id: str) -> None:
         """Inicjalizacja współdzielonego Store dla zadań nauki."""
@@ -553,14 +568,8 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                 self._fire_absence_events(tematy_lekcji, uczen)
                 self._fire_note_events(uwagi, uczen)
 
-            # Adaptacyjne odświeżanie
-            from datetime import datetime, timedelta
-            now = datetime.now()
-            # W dni robocze między 7:00 a 16:00 - co 15 minut
-            if 7 <= now.hour < 16 and now.weekday() < 5:
-                self.update_interval = timedelta(minutes=15)
-            else:
-                self.update_interval = SCAN_INTERVAL
+            # Adaptacyjne odświeżanie (interwały z opcji integracji)
+            self.update_interval = self._interwal_odpytywania(datetime.now())
 
             return result
 
