@@ -819,6 +819,10 @@ MIT License - patrz [LICENSE](LICENSE)
 
 ## 📝 Historia Zmian
 
+### v3.0.1
+- 🐛 **Poprawka planu lekcji (Issue #42)**: Naprawiono błąd wcięcia w fuzji planu lekcji – odległe zdarzenia z terminarza nie nadpisują już lekcji z bieżącego tygodnia (dzięki **@morbiasz**).
+- ⚙️ **Konfigurowalny interwał odpytywania (PR #44)**: Możliwość dostosowania częstotliwości odpytywania Librusa w opcjach integracji: osobno dla godzin szkolnych (7:00–16:00) oraz pozostałych godzin i weekendów (dzięki **@morbiasz**).
+
 ### v3.0.0
 - 🤖 **Moduł Asystenta AI**: Automatyczne generowanie personalizowanych podsumowań tygodnia i dziennych wiadomości (z profilami dla rodzica i ucznia).
 - 📅 **Integracja Terminarza i Sprawdzianów**: Tagi `{sprawdziany}` i `{zadania}` w promptach AI pozwalają asystentowi analizować nadchodzące testy i prace klasowe.
