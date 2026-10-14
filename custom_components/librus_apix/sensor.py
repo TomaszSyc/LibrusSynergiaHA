@@ -1,5 +1,6 @@
 """Platforma czujników dla integracji Librus APIX."""
 
+import asyncio
 import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -170,6 +171,7 @@ async def async_setup_entry(
         LibrusOgloszeniaSensor(coordinator, config_entry),
         LibrusTematyLekcjiSensor(coordinator, config_entry),
         LibrusUwagiSensor(coordinator, config_entry),
+        LibrusZachowanieSensor(coordinator, config_entry),
     ]
 
     # Tworz czujniki per przedmiot na podstawie pierwszego pobrania danych
@@ -351,6 +353,16 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                 tematy_raw = await self.client.async_get_completed_lessons()
                 frekwencja_stat_raw = await self.client.async_get_attendance_stats()
                 uwagi_raw = await self.client.async_get_notes()
+                if hasattr(self.client, "async_get_behavior") and callable(self.client.async_get_behavior):
+                    beh_call = self.client.async_get_behavior()
+                    if asyncio.iscoroutine(beh_call):
+                        zachowanie_raw = await beh_call
+                    elif isinstance(beh_call, dict) or beh_call is None:
+                        zachowanie_raw = beh_call
+                    else:
+                        zachowanie_raw = None
+                else:
+                    zachowanie_raw = None
 
             prev = self.data or {}
 
@@ -368,6 +380,12 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
 
             if student_info is None:
                 student_info = prev.get("student_info")
+
+            zachowanie = (
+                zachowanie_raw
+                if zachowanie_raw is not None
+                else prev.get("zachowanie", {})
+            )
 
             # Grupuj oceny wg przedmiotu i oznacz nowe
             oceny_wg_przedmiotu: Dict[str, List[Dict]] = {}
@@ -528,6 +546,7 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                 "ogloszenia": ogloszenia,
                 "tematy_lekcji": tematy_lekcji,
                 "uwagi": uwagi,
+                "zachowanie": zachowanie,
                 "frekwencja_stat": frekwencja_stat,
                 "semestr_biezacy": current_sem,
             }
@@ -1282,6 +1301,66 @@ class LibrusUwagiSensor(CoordinatorEntity, SensorEntity):
             "liczba_neutralnych": sum(1 for u in uwagi if u["rodzaj"] == "neutralna"),
             "ostatnia": uwagi[0] if uwagi else None,
             "sa_nowe_uwagi": any(_jest_nowa(u["data"]) for u in uwagi),
+        }
+
+
+class LibrusZachowanieSensor(CoordinatorEntity, SensorEntity):
+    """Czujnik ocen i punktów z zachowania."""
+
+    def __init__(self, coordinator: LibrusDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        """Inicjalizacja."""
+        super().__init__(coordinator)
+        self._config_entry = config_entry
+        self._attr_has_entity_name = False
+        self._attr_name = "Zachowanie"
+        self._attr_unique_id = f"{config_entry.entry_id}_zachowanie"
+        self._attr_icon = "mdi:account-badge"
+
+    @property
+    def device_info(self) -> Dict[str, Any]:
+        return _device_info(self.coordinator, self._config_entry)
+
+    @property
+    def native_value(self) -> Any:
+        """Punkty lub ocena z zachowania."""
+        zachowanie = (self.coordinator.data or {}).get("zachowanie") or {}
+        current_sem = (self.coordinator.data or {}).get("semestr_biezacy", 1)
+        # 1. Suma punktów w bieżącym okresie
+        suma = zachowanie.get(f"suma_okres_{current_sem}")
+        if suma is not None:
+            return suma
+        if zachowanie.get("suma_okres_1") is not None:
+            return zachowanie.get("suma_okres_1")
+        # 2. Przewidywana lub wystawiona ocena słowna
+        ocena = (
+            zachowanie.get(f"ocena_przewidywana_okres_{current_sem}")
+            or zachowanie.get("ocena_przewidywana_okres_1")
+            or zachowanie.get("ocena_srodroczna")
+            or zachowanie.get("ocena_roczna")
+        )
+        if ocena:
+            return ocena
+        # 3. Punkty startowe
+        if zachowanie.get("punkty_startowe") is not None:
+            return zachowanie.get("punkty_startowe")
+        return "Brak"
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        zachowanie = (self.coordinator.data or {}).get("zachowanie") or {}
+        wpisy = zachowanie.get("wpisy", [])
+        return {
+            "punkty_startowe": zachowanie.get("punkty_startowe"),
+            "suma_okres_1": zachowanie.get("suma_okres_1"),
+            "suma_okres_2": zachowanie.get("suma_okres_2"),
+            "ocena_przewidywana_okres_1": zachowanie.get("ocena_przewidywana_okres_1", ""),
+            "ocena_przewidywana_okres_2": zachowanie.get("ocena_przewidywana_okres_2", ""),
+            "ocena_srodroczna": zachowanie.get("ocena_srodroczna", ""),
+            "ocena_roczna": zachowanie.get("ocena_roczna", ""),
+            "liczba_wpisow_pozytywnych": sum(1 for w in wpisy if w.get("typ") == "pozytywny"),
+            "liczba_wpisow_negatywnych": sum(1 for w in wpisy if w.get("typ") == "negatywny"),
+            "ostatni_wpis": wpisy[0] if wpisy else None,
+            "wpisy": wpisy,
         }
 
 

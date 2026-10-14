@@ -23,7 +23,7 @@ async def test_bez_sztucznej_lekcji_dla_nieobecnosci_nauczyciela(hass):
     client = MagicMock(spec=LibrusApiClient)
     client.username = "test_user"
     client.options = {}
-    for name in ("async_get_student_information", "async_get_grades", "async_get_messages", "async_get_homework",
+    for name in ("async_get_student_information", "async_get_grades", "async_get_behavior", "async_get_messages", "async_get_homework",
                  "async_get_attendance", "async_get_announcements", "async_get_completed_lessons"):
         setattr(client, name, AsyncMock(return_value=[]))
     client.async_get_attendance_stats = AsyncMock(return_value=None)
@@ -48,7 +48,7 @@ async def test_dzien_wolny_czysci_lekcje(hass):
     client = MagicMock(spec=LibrusApiClient)
     client.username = "test_user"
     client.options = {}
-    for name in ("async_get_student_information", "async_get_grades", "async_get_messages", "async_get_homework",
+    for name in ("async_get_student_information", "async_get_grades", "async_get_behavior", "async_get_messages", "async_get_homework",
                  "async_get_attendance", "async_get_announcements", "async_get_completed_lessons"):
         setattr(client, name, AsyncMock(return_value=[]))
     client.async_get_attendance_stats = AsyncMock(return_value=None)
@@ -77,7 +77,7 @@ async def test_fuzja_dopasowuje_do_wlasciwej_lekcji_bez_sztucznej_lekcji(hass):
     client = MagicMock(spec=LibrusApiClient)
     client.username = "test_user"
     client.options = {}
-    for name in ("async_get_student_information", "async_get_grades", "async_get_messages", "async_get_homework",
+    for name in ("async_get_student_information", "async_get_grades", "async_get_behavior", "async_get_messages", "async_get_homework",
                  "async_get_attendance", "async_get_announcements", "async_get_completed_lessons"):
         setattr(client, name, AsyncMock(return_value=[]))
     client.async_get_attendance_stats = AsyncMock(return_value=None)
@@ -125,7 +125,7 @@ def _klient_planu(plan, terminarz):
     client = MagicMock(spec=LibrusApiClient)
     client.username = "test_user"
     client.options = {}
-    for name in ("async_get_student_information", "async_get_grades", "async_get_messages", "async_get_homework",
+    for name in ("async_get_student_information", "async_get_grades", "async_get_behavior", "async_get_messages", "async_get_homework",
                  "async_get_attendance", "async_get_announcements", "async_get_completed_lessons"):
         setattr(client, name, AsyncMock(return_value=[]))
     client.async_get_attendance_stats = AsyncMock(return_value=None)

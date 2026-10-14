@@ -218,6 +218,166 @@ def _parse_point_grades(html: str) -> list:
     return result
 
 
+def _parse_behavior_grades(html: str) -> Optional[dict]:
+    """Odczytaj oceny i punkty zachowania ze strony ocen.
+
+    Wyszukuje wiersz "Zachowanie" (np. znacznik z id 'przedmioty_zachowanie_node')
+    oraz powiązaną podtabelę '#przedmioty_zachowanie'.
+    Zwraca słownik z punktami startowymi, sumami per okres, przewidywanymi ocenami
+    oraz listą poszczególnych wpisów punktowych.
+    """
+    import html as html_lib
+    import re
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "lxml")
+
+    node = soup.select_one('#przedmioty_zachowanie_node')
+    sub_table = soup.select_one('#przedmioty_zachowanie')
+
+    main_row = None
+    if node:
+        main_row = node.find_parent("tr")
+    else:
+        for tr in soup.find_all("tr"):
+            for td in tr.find_all("td"):
+                if td.get_text(strip=True).lower() == "zachowanie":
+                    main_row = tr
+                    break
+            if main_row:
+                break
+
+    if not main_row and not sub_table:
+        return None
+
+    result = {
+        "punkty_startowe": None,
+        "suma_okres_1": None,
+        "suma_okres_2": None,
+        "ocena_przewidywana_okres_1": "",
+        "ocena_przewidywana_okres_2": "",
+        "ocena_srodroczna": "",
+        "ocena_roczna": "",
+        "wpisy": [],
+    }
+
+    # 1. Odczyt z podtabeli szczegółowej, jeśli istnieje
+    if sub_table:
+        current_period = 1
+        for tr in sub_table.find_all("tr"):
+            tr_text = tr.get_text(" ", strip=True)
+            if "Okres 1" in tr_text:
+                current_period = 1
+                continue
+            elif "Okres 2" in tr_text:
+                current_period = 2
+                continue
+
+            if "Punkty startowe" in tr_text:
+                for td in tr.find_all("td"):
+                    val = td.get_text(strip=True)
+                    if val.replace(".", "", 1).replace("-", "", 1).isdigit():
+                        pts = float(val) if "." in val else int(val)
+                        result["punkty_startowe"] = pts
+                        break
+            elif "Suma" in tr_text:
+                for td in tr.find_all("td"):
+                    val = td.get_text(strip=True)
+                    if val.replace(".", "", 1).replace("-", "", 1).isdigit():
+                        pts = float(val) if "." in val else int(val)
+                        if current_period == 1:
+                            result["suma_okres_1"] = pts
+                        else:
+                            result["suma_okres_2"] = pts
+                        break
+            elif "Ocena śródroczna przewidywana" in tr_text:
+                parts = tr_text.split(":", 1)
+                if len(parts) > 1:
+                    val = parts[1].strip()
+                    if val and val != "-":
+                        result["ocena_przewidywana_okres_1"] = val
+            elif "Ocena roczna przewidywana" in tr_text:
+                parts = tr_text.split(":", 1)
+                if len(parts) > 1:
+                    val = parts[1].strip()
+                    if val and val != "-":
+                        result["ocena_przewidywana_okres_2"] = val
+
+    # 2. Odczyt ze znaczków ocen w wierszu głównym
+    if main_row:
+        cells = [td for td in main_row.find_all("td", recursive=False) if "screen-only" not in (td.get("class") or [])]
+
+        if len(cells) > 2:
+            val = cells[2].get_text(strip=True)
+            if val and val != "-":
+                result["ocena_srodroczna"] = val
+        if len(cells) > 4:
+            val = cells[4].get_text(strip=True)
+            if val and val != "-":
+                result["ocena_roczna"] = val
+
+        period_mapping = [(1, 1), (2, 3)]
+        for period, col_idx in period_mapping:
+            if col_idx >= len(cells):
+                continue
+            td = cells[col_idx]
+
+            if result["punkty_startowe"] is None:
+                start_span = td.select_one('span.tooltip[title*="Punkty startowe"], span[title*="Punkty startowe"]')
+                if start_span:
+                    st_val = start_span.get_text(strip=True)
+                    if st_val.isdigit():
+                        result["punkty_startowe"] = int(st_val)
+
+            for a in td.select("span.grade-box > a"):
+                title = html_lib.unescape(a.get("title", ""))
+                val_text = a.get_text(strip=True)
+
+                parent_box = a.find_parent("span", class_="grade-box")
+                box_class = parent_box.get("class", []) if parent_box else []
+                is_negative = "negative-behaviour" in box_class or val_text.startswith("-")
+                typ = "negatywny" if is_negative else "pozytywny"
+
+                kategoria = ""
+                data_wyst = ""
+                nauczyciel = ""
+                komentarz = ""
+
+                parts = re.split(r"<br\s*/?>", title)
+                if parts:
+                    first_line = parts[0].strip()
+                    m = re.match(r"^(.*?)(?:\((?:[-+]?\d+)\))?$", first_line)
+                    kategoria = m.group(1).strip() if m else first_line
+
+                for part in parts[1:]:
+                    part_str = part.strip()
+                    if part_str.startswith("Data wystawienia:"):
+                        data_wyst = part_str.split(":", 1)[1].strip()
+                    elif part_str.startswith("Dodał:"):
+                        nauczyciel = part_str.split(":", 1)[1].strip()
+                    elif part_str.startswith("Komentarz:"):
+                        komentarz = part_str.split(":", 1)[1].strip()
+
+                punkty = None
+                try:
+                    punkty = float(val_text.replace(",", ".")) if "." in val_text or "," in val_text else int(val_text)
+                except ValueError:
+                    pass
+
+                result["wpisy"].append({
+                    "kategoria": kategoria,
+                    "punkty": punkty,
+                    "typ": typ,
+                    "data": data_wyst,
+                    "nauczyciel": nauczyciel,
+                    "komentarz": komentarz,
+                    "okres": period,
+                })
+
+    result["wpisy"].sort(key=lambda x: x.get("data") or "", reverse=True)
+    return result
+
+
 def _parse_completed_lessons(html: str) -> list:
     """Sparsuj tabele strony "Zrealizowane lekcje".
 
@@ -311,6 +471,7 @@ class LibrusApiClient:
         self._store = Store(hass, 1, f"{DOMAIN}_messages_cache_{self.username}") if hass else None
         self._bg_fetch_task = None
         self.coordinator = None
+        self._behavior_data = None
 
     async def async_init_cache(self) -> None:
         """Load cached message contents from persistent store."""
@@ -405,6 +566,7 @@ class LibrusApiClient:
         self._orig_session_close = None
         self._client = None
         self._token = None
+        self._behavior_data = None
 
     async def async_authenticate(self):
         """Authenticate with Librus API."""
@@ -465,12 +627,18 @@ class LibrusApiClient:
                     except Exception as pt_ex:
                         _LOGGER.debug("Nie udało się odczytać ocen punktowych: %s", pt_ex)
                         point_grades = []
-                    return num_grades, avg_grades, desc_grades, point_grades
+                    try:
+                        behavior_data = _parse_behavior_grades(html)
+                    except Exception as beh_ex:
+                        _LOGGER.debug("Nie udało się odczytać zachowania: %s", beh_ex)
+                        behavior_data = None
+                    return num_grades, avg_grades, desc_grades, point_grades, behavior_data
 
                 loop = asyncio.get_running_loop()
-                numeric_grades, average_grades, descriptive_grades, point_grades = await loop.run_in_executor(
+                numeric_grades, average_grades, descriptive_grades, point_grades, behavior_data = await loop.run_in_executor(
                     None, _fetch_grades_data
                 )
+                self._behavior_data = behavior_data
 
                 current_sem = _current_semester()
                 _LOGGER.debug("Filtrowanie ocen dla semestru %d", current_sem)
@@ -597,6 +765,13 @@ class LibrusApiClient:
                 )
                 if attempt == 1:
                     return None
+
+    async def async_get_behavior(self) -> Optional[dict]:
+        """Pobierz dane ocen i punktów z zachowania ze strony ocen."""
+        if self._behavior_data is not None:
+            return self._behavior_data
+        await self.async_get_grades()
+        return self._behavior_data
 
     async def async_get_messages(self, count: int = 10):
         """Get latest messages from Librus (subject and sender only, no content fetch to avoid marking as read)."""
