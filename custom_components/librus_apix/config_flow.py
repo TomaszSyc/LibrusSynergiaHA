@@ -11,7 +11,13 @@ from homeassistant.helpers import selector
 
 from librus_apix.client import new_client
 
-from .const import DOMAIN
+from .const import (
+    CONF_SCAN_INTERVAL_OTHER,
+    CONF_SCAN_INTERVAL_SCHOOL,
+    DEFAULT_SCAN_INTERVAL_OTHER,
+    DEFAULT_SCAN_INTERVAL_SCHOOL,
+    DOMAIN,
+)
 from .ai_prompts import (
     DEFAULT_PROMPT_WEEKLY_PARENT,
     DEFAULT_PROMPT_WEEKLY_STUDENT,
@@ -118,6 +124,14 @@ class LibrusApixOptionsFlowHandler(config_entries.OptionsFlow):
                     "days_before_exam_study",
                     default=self.entry.options.get("days_before_exam_study", 2),
                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=7)),
+                vol.Optional(
+                    CONF_SCAN_INTERVAL_SCHOOL,
+                    default=self.entry.options.get(CONF_SCAN_INTERVAL_SCHOOL, DEFAULT_SCAN_INTERVAL_SCHOOL),
+                ): vol.All(vol.Coerce(int), vol.Range(min=15, max=240)),
+                vol.Optional(
+                    CONF_SCAN_INTERVAL_OTHER,
+                    default=self.entry.options.get(CONF_SCAN_INTERVAL_OTHER, DEFAULT_SCAN_INTERVAL_OTHER),
+                ): vol.All(vol.Coerce(int), vol.Range(min=30, max=720)),
             }
         )
 
