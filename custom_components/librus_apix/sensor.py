@@ -458,48 +458,48 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                                     if score > max_score:
                                         max_score = score
                                     
-                        # Przypisz zdarzenie tylko do lekcji z najwyzszym wynikiem
-                        if max_score > 0:
-                            for score, lekcja in scored_lekcje:
-                                if score == max_score:
-                                    lekcja["zdarzenie"] = ev_title
-                                    ev_opis = t_ev.get("szczegoly", {}).get("Opis")
-                                    if ev_opis and str(ev_opis).lower() != "unknown":
-                                        opis_str = str(ev_opis).strip()
+                            # Przypisz zdarzenie tylko do lekcji z najwyzszym wynikiem
+                            if max_score > 0:
+                                for score, lekcja in scored_lekcje:
+                                    if score == max_score:
+                                        lekcja["zdarzenie"] = ev_title
+                                        ev_opis = t_ev.get("szczegoly", {}).get("Opis")
+                                        if ev_opis and str(ev_opis).lower() != "unknown":
+                                            opis_str = str(ev_opis).strip()
+                                            if len(opis_str) > 100:
+                                                opis_str = opis_str[:97] + "..."
+                                            lekcja["zdarzenie_opis"] = opis_str
+                            else:
+                                # Jesli nie dopasowano lekcji z planu, a terminarz ma numer lekcji (np. poprawa po lekcjach).
+                                # Nieobecnosc nauczyciela i dzien wolny nie sa zajeciami ucznia - nie dodajemy
+                                # dla nich sztucznej lekcji (np. nieobecnosc nauczyciela na 8. lekcji, ktorej
+                                # uczen nie ma, dawala lekcje "??:??" i psula plan dnia).
+                                if ev_num and t_ev.get("rodzaj") not in ("nieobecnosc_nauczyciela", "dzien_wolny"):
+                                    try:
+                                        first_num = int(str(ev_num).split("-")[0])
+                                        ev_opis = t_ev.get("szczegoly", {}).get("Opis")
+                                        opis_str = str(ev_opis).strip() if ev_opis and str(ev_opis).lower() != "unknown" else ""
                                         if len(opis_str) > 100:
                                             opis_str = opis_str[:97] + "..."
-                                        lekcja["zdarzenie_opis"] = opis_str
-                        else:
-                            # Jesli nie dopasowano lekcji z planu, a terminarz ma numer lekcji (np. poprawa po lekcjach).
-                            # Nieobecnosc nauczyciela i dzien wolny nie sa zajeciami ucznia - nie dodajemy
-                            # dla nich sztucznej lekcji (np. nieobecnosc nauczyciela na 8. lekcji, ktorej
-                            # uczen nie ma, dawala lekcje "??:??" i psula plan dnia).
-                            if ev_num and t_ev.get("rodzaj") not in ("nieobecnosc_nauczyciela", "dzien_wolny"):
-                                try:
-                                    first_num = int(str(ev_num).split("-")[0])
-                                    ev_opis = t_ev.get("szczegoly", {}).get("Opis")
-                                    opis_str = str(ev_opis).strip() if ev_opis and str(ev_opis).lower() != "unknown" else ""
-                                    if len(opis_str) > 100:
-                                        opis_str = opis_str[:97] + "..."
-                                        
-                                    day.setdefault("lekcje", []).append({
-                                        "przedmiot": ev_subject or ev_title,
-                                        "nauczyciel_i_sala": "",
-                                        "nauczyciel": "",
-                                        "sala": "",
-                                        "godzina_od": "??:??",
-                                        "godzina_do": "??:??",
-                                        "data": ev_date,
-                                        "numer": first_num,
-                                        "dzd": False,
-                                        "odwolana": False,
-                                        "zastepstwo": False,
-                                        "zdarzenie": ev_title,
-                                        "zdarzenie_opis": opis_str,
-                                    })
-                                    day["lekcje"].sort(key=lambda x: (int(x.get("numer") or 99), x.get("godzina_od") or "99:99"))
-                                except Exception as ex:
-                                    _LOGGER.debug("Błąd podczas dodawania zdarzenia do planu lekcji: %s", ex)
+                                            
+                                        day.setdefault("lekcje", []).append({
+                                            "przedmiot": ev_subject or ev_title,
+                                            "nauczyciel_i_sala": "",
+                                            "nauczyciel": "",
+                                            "sala": "",
+                                            "godzina_od": "??:??",
+                                            "godzina_do": "??:??",
+                                            "data": ev_date,
+                                            "numer": first_num,
+                                            "dzd": False,
+                                            "odwolana": False,
+                                            "zastepstwo": False,
+                                            "zdarzenie": ev_title,
+                                            "zdarzenie_opis": opis_str,
+                                        })
+                                        day["lekcje"].sort(key=lambda x: (int(x.get("numer") or 99), x.get("godzina_od") or "99:99"))
+                                    except Exception as ex:
+                                        _LOGGER.debug("Błąd podczas dodawania zdarzenia do planu lekcji: %s", ex)
 
             result = {
                 "student_info": student_info,
