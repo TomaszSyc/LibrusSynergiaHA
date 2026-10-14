@@ -5,7 +5,7 @@ import logging
 import re
 import traceback
 from datetime import date
-from typing import Dict, Any
+from typing import Any, Dict, List, Optional
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
