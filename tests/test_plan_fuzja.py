@@ -119,3 +119,51 @@ async def test_fuzja_dopasowuje_do_wlasciwej_lekcji_bez_sztucznej_lekcji(hass):
     assert lekcje[3]["zdarzenie"] == "Kartkówka"
     assert lekcje[3]["zdarzenie_opis"] == "Ułamki"
 
+
+
+def _klient_planu(plan, terminarz):
+    client = MagicMock(spec=LibrusApiClient)
+    client.username = "test_user"
+    client.options = {}
+    for name in ("async_get_student_information", "async_get_grades", "async_get_messages", "async_get_homework",
+                 "async_get_attendance", "async_get_announcements", "async_get_completed_lessons"):
+        setattr(client, name, AsyncMock(return_value=[]))
+    client.async_get_attendance_stats = AsyncMock(return_value=None)
+    client.async_get_notes = AsyncMock(return_value=[])
+    client.async_get_timetable = AsyncMock(return_value=plan)
+    client.async_get_schedule = AsyncMock(return_value=terminarz)
+    return client
+
+
+def _zdarzenie(data, tytul, nr):
+    return {"data": data, "tydzien": "", "tytul": tytul, "rodzaj": "sprawdzian", "przedmiot": "Przyroda",
+            "godzina": "unknown", "numer_lekcji": nr, "szczegoly": {}, "href": ""}
+
+
+def _plan_piatek():
+    return [{"dzien_tygodnia": "Piątek", "data": "2026-10-16",
+             "lekcje": [dict(_lekcja(3, "09:50", "10:35"), przedmiot="Przyroda", data="2026-10-16")]}]
+
+
+async def test_zdarzenie_spoza_planu_nie_nadpisuje_lekcji(hass):
+    """#42: zdarzenie z daty spoza planu nie trafia do lekcji dopasowanej dla poprzedniego zdarzenia."""
+    client = _klient_planu(_plan_piatek(), [
+        _zdarzenie("2026-10-16", "Kartkówka", "3"),
+        _zdarzenie("2026-11-13", "Sprawdzian", "3"),
+    ])
+    data = await LibrusDataUpdateCoordinator(hass, client)._async_update_data()
+    lekcje = data["plan_lekcji"][0]["lekcje"]
+    assert len(lekcje) == 1
+    assert lekcje[0]["zdarzenie"] == "Kartkówka"
+
+
+async def test_pierwsze_zdarzenie_spoza_planu_nie_psuje_odswiezania(hass):
+    """Zdarzenie spoza planu na początku terminarza nie przerywa fuzji (UnboundLocalError)."""
+    client = _klient_planu(_plan_piatek(), [
+        _zdarzenie("2026-10-09", "Kartkówka", "3"),
+        _zdarzenie("2026-10-16", "Sprawdzian", "3"),
+    ])
+    data = await LibrusDataUpdateCoordinator(hass, client)._async_update_data()
+    lekcje = data["plan_lekcji"][0]["lekcje"]
+    assert len(lekcje) == 1
+    assert lekcje[0]["zdarzenie"] == "Sprawdzian"
