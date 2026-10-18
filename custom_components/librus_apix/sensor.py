@@ -269,6 +269,9 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
         # zeby duzy cache mozna bylo zapisywac tylko przy zmianie danych.
         self.meta_store = Store(hass, 1, f"{DOMAIN}_cache_meta_{self.client.username}")
         self._cache_pobrano: Optional[float] = None
+        # Wersja integracji (z manifestu, ustawiana przy starcie) i wersja, ktora zapisala cache
+        self.wersja_integracji: Optional[str] = None
+        self._cache_wersja: Optional[str] = None
         self._ostatni_zapis: Optional[str] = None
         self.study_store: Optional[Store] = None
         self.study_completed_uids: set = set()
@@ -306,6 +309,8 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                     meta = await self.meta_store.async_load()
                     if isinstance(meta, dict) and isinstance(meta.get("pobrano"), (int, float)):
                         self._cache_pobrano = float(meta["pobrano"])
+                        wersja = meta.get("wersja")
+                        self._cache_wersja = wersja if isinstance(wersja, str) else None
                 except Exception as meta_ex:
                     _LOGGER.debug("Nie udało się wczytać znacznika czasu cache dla %s: %s", self.client.username, meta_ex)
                 if "student_info" in cached and isinstance(cached["student_info"], dict):
@@ -317,8 +322,12 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
         return None
 
     def wiek_cache(self) -> Optional[float]:
-        """Ile sekund temu dane z cache zostaly pobrane z Librusa (None gdy nie wiadomo)."""
-        if self._cache_pobrano is None:
+        """Ile sekund temu dane z cache zostaly pobrane z Librusa.
+
+        None gdy nie wiadomo albo cache zapisala inna wersja integracji - po
+        aktualizacji (np. z poprawka blednych danych) odswiezamy od razu.
+        """
+        if self._cache_pobrano is None or self._cache_wersja != self.wersja_integracji:
             return None
         return time.time() - self._cache_pobrano
 
@@ -614,7 +623,10 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                     await self.store.async_save(cache_copy)
                     self._ostatni_zapis = zrzut
                 self._cache_pobrano = time.time()
-                await self.meta_store.async_save({"pobrano": self._cache_pobrano})
+                self._cache_wersja = self.wersja_integracji
+                await self.meta_store.async_save(
+                    {"pobrano": self._cache_pobrano, "wersja": self.wersja_integracji}
+                )
             except Exception as save_ex:
                 _LOGGER.debug("Nie udało się zapisać pełnego stanu do cache: %s", save_ex)
 

@@ -94,6 +94,118 @@ async def test_wiek_cache_bez_pliku_meta(hass: HomeAssistant):
     assert coord.wiek_cache() is None
 
 
+# --- Cache z innej wersji integracji odswiezany od razu ---
+
+
+def _koordynator_z_meta(hass, wersja_integracji, meta):
+    client = MagicMock()
+    client.username = "test_user"
+    client.options = {}
+    coord = LibrusDataUpdateCoordinator(hass, client)
+    coord.wersja_integracji = wersja_integracji
+    coord.store = MagicMock()
+    coord.store.async_load = AsyncMock(return_value=dict(CACHE))
+    coord.meta_store = MagicMock()
+    coord.meta_store.async_load = AsyncMock(return_value=meta)
+    return coord
+
+
+@pytest.mark.parametrize(
+    "meta",
+    [
+        {"pobrano": 1000.0, "wersja": "3.0.1"},  # poprzednie wydanie
+        {"pobrano": 1000.0},  # plik meta z 3.0.1 (bez pola wersja)
+    ],
+    ids=["inna_wersja", "brak_wersji"],
+)
+async def test_cache_z_innej_wersji_traktowany_jak_nieaktualny(hass: HomeAssistant, meta):
+    coord = _koordynator_z_meta(hass, "3.0.2", meta)
+    with patch("custom_components.librus_apix.sensor.time.time", return_value=1060.0):
+        assert await coord.async_load_cached_data() is not None
+        assert coord.wiek_cache() is None
+
+
+async def test_cache_z_tej_samej_wersji_ma_wiek(hass: HomeAssistant):
+    coord = _koordynator_z_meta(hass, "3.0.2", {"pobrano": 1000.0, "wersja": "3.0.2"})
+    with patch("custom_components.librus_apix.sensor.time.time", return_value=1060.0):
+        await coord.async_load_cached_data()
+        assert coord.wiek_cache() == 60.0
+
+
+async def test_meta_zapisuje_wersje_integracji(hass: HomeAssistant):
+    client = MagicMock(spec=LibrusApiClient)
+    client.username = "test_user"
+    client.options = {}
+    client._client = MagicMock()
+    client._token = "token"
+    for name in (
+        "async_get_student_information", "async_get_attendance_stats", "async_get_behavior",
+    ):
+        setattr(client, name, AsyncMock(return_value=None))
+    for name in (
+        "async_get_grades", "async_get_messages", "async_get_homework", "async_get_schedule",
+        "async_get_timetable", "async_get_attendance", "async_get_announcements",
+        "async_get_completed_lessons", "async_get_notes",
+    ):
+        setattr(client, name, AsyncMock(return_value=[]))
+    coord = LibrusDataUpdateCoordinator(hass, client)
+    coord.wersja_integracji = "3.0.2"
+    coord.store = MagicMock()
+    coord.store.async_save = AsyncMock()
+    coord.meta_store = MagicMock()
+    coord.meta_store.async_save = AsyncMock()
+
+    await coord._async_update_data()
+
+    zapis = coord.meta_store.async_save.await_args.args[0]
+    assert zapis["wersja"] == "3.0.2"
+    assert isinstance(zapis["pobrano"], float)
+
+
+def _wersja_z_manifestu() -> str:
+    import json
+    import pathlib
+
+    sciezka = pathlib.Path(__file__).parent.parent / "custom_components" / "librus_apix" / "manifest.json"
+    return json.loads(sciezka.read_text(encoding="utf-8"))["version"]
+
+
+def _wczytanie_cache(wersja_w_meta):
+    """Podmiana async_load_cached_data: cache sprzed minuty z podana wersja w meta."""
+    import time
+
+    async def _load(self):
+        self._cache_pobrano = time.time() - 60
+        self._cache_wersja = wersja_w_meta
+        return dict(CACHE)
+
+    return _load
+
+
+async def test_start_po_aktualizacji_odswieza_od_razu(
+    hass: HomeAssistant, mock_config_entry, mock_librus_client  # noqa: F811
+):
+    """Swiezy cache, ale zapisany przez starsza wersje: odswiezenie od razu po starcie."""
+    with patch("custom_components.librus_apix.LibrusApiClient", return_value=mock_librus_client), \
+         patch.object(LibrusDataUpdateCoordinator, "async_load_cached_data", _wczytanie_cache("0.0.1")):
+        assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+    assert mock_librus_client.coordinator.wersja_integracji == _wersja_z_manifestu()
+    mock_librus_client.async_get_grades.assert_awaited()
+
+
+async def test_start_bez_aktualizacji_ze_swiezym_cache(
+    hass: HomeAssistant, mock_config_entry, mock_librus_client  # noqa: F811
+):
+    """Swiezy cache z tej samej wersji: start bez zapytan do Librusa (jak dotad)."""
+    with patch("custom_components.librus_apix.LibrusApiClient", return_value=mock_librus_client), \
+         patch.object(LibrusDataUpdateCoordinator, "async_load_cached_data",
+                      _wczytanie_cache(_wersja_z_manifestu())):
+        assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+    mock_librus_client.async_get_grades.assert_not_awaited()
+
+
 # --- C2: moduly biblioteki ladowane razem z integracja ---
 
 

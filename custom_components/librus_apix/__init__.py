@@ -15,6 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
+from homeassistant.loader import async_get_integration
 
 from librus_apix.client import Client, Token, new_client
 from librus_apix.exceptions import TokenError
@@ -1872,6 +1873,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = LibrusDataUpdateCoordinator(hass, client)
     client.coordinator = coordinator
     await coordinator.async_init_study_store(entry.entry_id)
+
+    # Wersja z manifestu (HA trzyma go w pamieci) - cache z innej wersji
+    # odswiezamy od razu po starcie zamiast czekac na interwal.
+    try:
+        integration = await async_get_integration(hass, DOMAIN)
+        coordinator.wersja_integracji = str(integration.version) if integration.version else None
+    except Exception as ver_ex:
+        _LOGGER.debug("Nie udało się odczytać wersji integracji: %s", ver_ex)
 
     # Spróbuj załadować cache całego stanu z dysku dla natychmiastowego startu
     cached_data = await coordinator.async_load_cached_data()
