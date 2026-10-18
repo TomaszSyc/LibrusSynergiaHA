@@ -91,7 +91,7 @@ def _mock_client_koordynatora():
 
 
 async def test_koordynator_przerywa_cykl_bez_logowania(hass):
-    """Bez logowania koordynator nie odpytuje Librusa o dane i zglasza UpdateFailed."""
+    """Bez logowania i bez danych (pierwsze uruchomienie) koordynator zglasza UpdateFailed."""
     client = _mock_client_koordynatora()
     coord = LibrusDataUpdateCoordinator(hass, client)
     with pytest.raises(UpdateFailed):
@@ -111,6 +111,74 @@ async def test_cykl_z_blednym_haslem_loguje_sie_raz(hass):
         with pytest.raises(UpdateFailed):
             await coord._async_update_data()
     assert nc.call_count == 1
+
+
+DANE = {"oceny": [], "plan_lekcji": [], "student_info": None}
+
+
+async def test_bez_logowania_z_danymi_encje_dostepne(hass):
+    """Awaria logowania przy istniejacych danych: stare dane, encje dostepne, bez zapytan."""
+    client = _mock_client_koordynatora()
+    coord = LibrusDataUpdateCoordinator(hass, client)
+    coord.async_set_updated_data(dict(DANE))
+    poprzednie = coord.data
+
+    await coord.async_refresh()
+
+    assert coord.last_update_success is True
+    assert coord.data is poprzednie
+    client.async_authenticate.assert_awaited_once()
+    client.async_get_grades.assert_not_awaited()
+    client.async_get_timetable.assert_not_awaited()
+
+
+async def test_bez_logowania_z_danymi_bez_zapisu_cache(hass):
+    """Pominiety cykl nie zapisuje cache ani znacznika czasu pobrania."""
+    client = _mock_client_koordynatora()
+    coord = LibrusDataUpdateCoordinator(hass, client)
+    coord.store = MagicMock()
+    coord.store.async_save = AsyncMock()
+    coord.meta_store = MagicMock()
+    coord.meta_store.async_save = AsyncMock()
+    coord.async_set_updated_data(dict(DANE))
+
+    await coord.async_refresh()
+
+    coord.store.async_save.assert_not_awaited()
+    coord.meta_store.async_save.assert_not_awaited()
+
+
+async def test_ostrzezenie_o_braku_logowania_raz_na_awarie(hass, caplog):
+    """Przy kolejnych nieudanych cyklach ostrzezenie w logu tylko raz; po powrocie znow."""
+    import logging
+
+    client = _mock_client_koordynatora()
+    coord = LibrusDataUpdateCoordinator(hass, client)
+    coord.async_set_updated_data(dict(DANE))
+
+    def _ostrzezenia():
+        return [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING and "zalogować" in r.getMessage()
+        ]
+
+    with caplog.at_level(logging.WARNING, logger="custom_components.librus_apix"):
+        await coord.async_refresh()
+        await coord.async_refresh()
+        await coord.async_refresh()
+        assert len(_ostrzezenia()) == 1
+
+        # Udane logowanie konczy awarie
+        client.async_authenticate.return_value = True
+        await coord.async_refresh()
+        assert coord.last_update_success is True
+        client.async_get_grades.assert_awaited()
+
+        # Kolejna awaria - znowu jedno ostrzezenie
+        client.async_authenticate.return_value = False
+        await coord.async_refresh()
+        await coord.async_refresh()
+        assert len(_ostrzezenia()) == 2
 
 
 # --- A2: ponawianie tylko po TokenError ---

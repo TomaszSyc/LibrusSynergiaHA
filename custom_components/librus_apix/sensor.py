@@ -262,6 +262,8 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
         self._seen_absence_ids: set = set()
         self._seen_note_ids: set = set()
         self._first_run: bool = True
+        # Trwa awaria logowania (ostrzezenie w logu tylko raz na awarie)
+        self._brak_logowania: bool = False
         self.store = Store(hass, 1, f"{DOMAIN}_cache_{self.client.username}")
         # Maly plik ze znacznikiem czasu ostatniego pobrania - zapisywany co cykl,
         # zeby duzy cache mozna bylo zapisywac tylko przy zmianie danych.
@@ -362,9 +364,24 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                 # cykl - inaczej kazda metoda probowalaby logowac sie osobno.
                 if not getattr(self.client, "_client", None) or not getattr(self.client, "_token", None):
                     if not await self.client.async_authenticate():
-                        raise UpdateFailed(
-                            "Nie udało się zalogować do Librusa - pomijam ten cykl odświeżania"
-                        )
+                        if not self.data:
+                            raise UpdateFailed(
+                                "Nie udało się zalogować do Librusa - pomijam ten cykl odświeżania"
+                            )
+                        # Sa dane: zostawiamy je bez zmian. UpdateFailed oznaczylby
+                        # wszystkie encje jako niedostepne (bez atrybutow) na czas awarii.
+                        if not self._brak_logowania:
+                            _LOGGER.warning(
+                                "Nie udało się zalogować do Librusa (%s) - pozostawiam ostatnie dane do czasu ponownego połączenia",
+                                self.client.username,
+                            )
+                        else:
+                            _LOGGER.debug("Nadal brak logowania do Librusa (%s) - pomijam cykl", self.client.username)
+                        self._brak_logowania = True
+                        return self.data
+                if self._brak_logowania:
+                    _LOGGER.info("Ponownie zalogowano do Librusa (%s)", self.client.username)
+                    self._brak_logowania = False
                 student_info = await self.client.async_get_student_information()
                 grades = await self.client.async_get_grades()
                 messages_count = self.client.options.get("fetch_messages_count", 10)
