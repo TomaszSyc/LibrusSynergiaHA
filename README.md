@@ -820,6 +820,12 @@ MIT License - patrz [LICENSE](LICENSE)
 
 ## 📝 Historia Zmian
 
+### v3.0.2
+- 👶 **Izolacja ciasteczek i tokenów wielu kont (PR #45)**: Naprawiono współdzielenie słoika ciasteczek w `librus-apix 1.5.3`. U rodziców z kilkoma uczniami w jednej instancji HA uwagi, frekwencja oraz zajęcia dodatkowe nie przeskakują już pomiędzy kontami dzieci (dzięki **@morbiasz**).
+- 🛡️ **Dostępność encji podczas problemów z logowaniem**: W przypadku chwilowej awarii portalu Librus lub błędu autoryzacji encje nie przechodzą w stan niedostępny (`unavailable`), lecz zachowują ostatnie znane dane na dashboardach na czas trwania awarii.
+- ⚡ **Automatyczne odświeżenie po aktualizacji**: Plik metadanych cache zapisuje wersję integracji. Po aktualizacji do nowej wersji dane ze szkoły są pobierane od razu przy starcie, bez czekania na upływ interwału odpytywania.
+- 🧹 **Czyste logi podczas awarii**: Pierwsze nieudane logowanie generuje pojedyncze ostrzeżenie w logu, kolejne próby w trakcie tej samej awarii nie spamują logów, a powrót połączenia jest sygnalizowany wpisem informacyjnym.
+
 ### v3.0.1
 - 🌟 **Sensor Zachowania (Issue #40)**: Dodano dedykowaną encję `sensor.librus_[uczen]_zachowanie` odczytującą punktację zachowania (punkty startowe, suma dla okresu 1 i 2), oceny przewidywane i śródroczne/roczne oraz szczegółową historię wpisów punktowych z kategoriami, nauczycielami i komentarzami.
 - 🐛 **Poprawka planu lekcji (Issue #42)**: Naprawiono błąd wcięcia w fuzji planu lekcji – odległe zdarzenia z terminarza nie nadpisują już lekcji z bieżącego tygodnia (dzięki **@morbiasz**).
