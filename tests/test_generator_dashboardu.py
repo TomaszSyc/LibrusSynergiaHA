@@ -120,6 +120,45 @@ def test_kazdy_element_osobno_to_poprawna_karta(tmp_path):
         assert isinstance(karta, dict) and "type" in karta, e["id"]
 
 
+PODGLAD = r"""
+const fs = require("fs"), vm = require("vm"), path = require("path");
+const [docs] = process.argv.slice(2);
+const bledy = [];
+const ctx = { window: {}, console: { error: (...a) => bledy.push(a.join(" ")), log() {} } };
+vm.createContext(ctx);
+for (const f of ["dashboard-templates.js", "generator.js", "dashboard-demo.js"]) {
+  vm.runInContext(fs.readFileSync(path.join(docs, f), "utf8"), ctx, { filename: f });
+}
+const G = ctx.window.LibrusGenerator, D = ctx.window.LibrusDemo;
+const uczen = { fullName: "Jan Kowalski", shortName: "Jan", emoji: "🧑‍🎓", paleta: G.DASH_PALETY[0], cel: "4.75" };
+uczen.encje = G.dashDomyslneEncje(uczen.fullName);
+const ids = G.dashKatalog().flatMap(s => s.elementy.map(e => e.id));
+const S = D.stany(uczen);
+const karty = G.generateDashboardElements([uczen], ids).map(e => ({ id: e.id, typ: e.karta.type, html: D.renderujKarte(e.id, e.karta, S, uczen.encje) }));
+const widok = D.renderujSekcje(G.generateDashboardPreview(uczen, ids), uczen);
+process.stdout.write(JSON.stringify({ karty, widok, bledy }));
+"""
+
+
+def test_podglad_na_danych_przykladowych(tmp_path):
+    skrypt = tmp_path / "podglad.js"
+    skrypt.write_text(PODGLAD, encoding="utf-8")
+    wynik = json.loads(subprocess.run(
+        ["node", str(skrypt), str(DOCS)], capture_output=True, text=True, encoding="utf-8", check=True,
+    ).stdout)
+    assert wynik["bledy"] == []
+    assert len(wynik["karty"]) == 33
+    for k in wynik["karty"]:
+        assert "Nie udało się narysować" not in k["html"], k["id"]
+        assert len(k["html"]) > 100, k["id"]
+        if k["typ"] == "custom:button-card":
+            # Prawdziwy kod karty: naglowek z ikona i tytulem z funkcji head()
+            assert "<ha-icon icon=\"mdi:" in k["html"], k["id"]
+    # Encje ucznia trafiaja do danych demo (np. imie i nazwisko w wizytowce)
+    assert "Jan Kowalski" in wynik["widok"]
+    assert wynik["widok"].count('class="ha-sekcja') == 13
+
+
 def test_szablony_bez_danych_osobowych():
     tekst = (DOCS / "dashboard-templates.js").read_text(encoding="utf-8")
     # Identyfikatory encji i ID uzytkownikow HA tylko jako tokeny

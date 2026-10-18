@@ -1042,52 +1042,6 @@ select.form-control {
   color: #93c5fd;
 }
 
-.dash-preview-canvas {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.6rem;
-  padding: 1rem;
-  max-height: 560px;
-  overflow-y: auto;
-}
-
-.dash-mini-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  padding: 0.55rem;
-}
-
-.dash-mini-section.wide {
-  grid-column: 1 / -1;
-}
-
-.dash-mini-title {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--text-main);
-  padding-left: 0.4rem;
-  border-left: 3px solid var(--acc);
-}
-
-.dash-mini-card {
-  font-size: 0.7rem;
-  color: var(--text-secondary);
-  background: color-mix(in srgb, var(--acc) 14%, #1f2937);
-  border-radius: 8px;
-  padding: 0.4rem 0.5rem;
-  line-height: 1.3;
-}
-
-.dash-mini-card.hero {
-  background: linear-gradient(135deg, var(--c1), var(--c2));
-  color: #fff;
-  font-weight: 600;
-}
-
 .dash-mini-empty {
   grid-column: 1 / -1;
   text-align: center;
@@ -1225,13 +1179,462 @@ select.form-control {
     grid-template-columns: 1fr;
   }
 
-  .dash-preview-canvas {
-    grid-template-columns: 1fr;
-  }
-
   .result-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+}
+
+/* ===================================================================
+   Podgląd kart na danych przykładowych (motyw ciemny Home Assistant)
+   =================================================================== */
+.ha-podglad {
+  --primary-text-color: #e1e1e1;
+  --secondary-text-color: #9b9b9b;
+  --divider-color: rgba(225, 225, 225, 0.12);
+  --card-background-color: #1c1c1c;
+  --demo-acc: #3f51b5;
+  background: #111111;
+  color: var(--primary-text-color);
+  font-family: Roboto, var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.ha-podglad .ha-sekcja {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ha-podglad .ha-card {
+  background: var(--card-background-color);
+  border: 1px solid var(--divider-color);
+  border-radius: 12px;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.ha-podglad .ha-card.wizytowka {
+  border: none;
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  --primary-text-color: #fff;
+}
+
+.ha-podglad .ha-card.wizytowka h2 {
+  margin: 0 0 6px;
+  font-size: 1.7em;
+}
+
+.ha-podglad .ha-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 4px 2px;
+}
+
+.ha-podglad .ha-heading-tytul {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.ha-podglad .ha-heading.subtitle .ha-heading-tytul {
+  font-size: 14px;
+  color: var(--secondary-text-color);
+}
+
+.ha-podglad .ha-heading ha-icon {
+  font-size: 20px;
+  color: var(--secondary-text-color);
+}
+
+.ha-podglad .ha-badges {
+  display: flex;
+  gap: 6px;
+}
+
+.ha-podglad .ha-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 10px 3px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--divider-color);
+}
+
+.ha-podglad ha-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--mdc-icon-size, 24px);
+  line-height: 1;
+}
+
+/* Markdown */
+.ha-podglad .ha-md p,
+.ha-podglad .ha-md ul {
+  margin: 0 0 8px;
+}
+
+.ha-podglad .ha-md ul {
+  padding-left: 20px;
+}
+
+.ha-podglad .ha-md > :last-child {
+  margin-bottom: 0;
+}
+
+.ha-podglad .ha-md table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0;
+  font-size: 13px;
+}
+
+.ha-podglad .ha-md th,
+.ha-podglad .ha-md td {
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--divider-color);
+  text-align: left;
+  vertical-align: top;
+}
+
+.ha-podglad .ha-md th {
+  font-weight: 600;
+}
+
+.ha-podglad .ha-md .c {
+  text-align: center;
+}
+
+.ha-podglad .ha-md .nw {
+  white-space: nowrap;
+}
+
+.ha-podglad .ha-md details {
+  border-bottom: 1px solid var(--divider-color);
+  padding: 6px 0;
+}
+
+.ha-podglad .ha-md summary {
+  cursor: pointer;
+}
+
+.ha-podglad .ha-md details > p,
+.ha-podglad .ha-md details > table {
+  margin-top: 6px;
+}
+
+.ha-podglad .ha-md sup {
+  font-size: 9px;
+}
+
+/* ha-alert */
+.ha-podglad ha-alert {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  margin: 4px 0;
+  border-radius: 6px;
+  --alert-k: #039be5;
+  background: color-mix(in srgb, var(--alert-k) 12%, transparent);
+  font-size: 13px;
+}
+
+.ha-podglad ha-alert.warning { --alert-k: #ffa600; }
+.ha-podglad ha-alert.error { --alert-k: #db4437; }
+.ha-podglad ha-alert.success { --alert-k: #43a047; }
+
+.ha-podglad .ha-alert-ikona {
+  color: var(--alert-k);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.ha-podglad .ha-alert-tytul {
+  display: block;
+}
+
+/* Mushroom i siatki */
+.ha-podglad .ha-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ha-podglad .ha-card.mushroom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 12px 6px;
+}
+
+.ha-podglad .mush-ikona {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--k);
+  background: color-mix(in srgb, var(--k) 20%, transparent);
+  margin-bottom: 8px;
+  font-size: 22px;
+}
+
+.ha-podglad .mush-odznaka {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f44336;
+  color: #fff;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ha-podglad .mush-prim {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.ha-podglad .mush-sec {
+  font-size: 12px;
+  color: var(--secondary-text-color);
+}
+
+.ha-podglad .ha-card.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 6px;
+  text-align: center;
+}
+
+.ha-podglad .ha-card.tile ha-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  font-size: 22px;
+  color: var(--demo-acc);
+  background: color-mix(in srgb, var(--demo-acc) 20%, transparent);
+}
+
+.ha-podglad .tile-nazwa {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.ha-podglad .tile-stan {
+  font-size: 11px;
+  color: var(--secondary-text-color);
+}
+
+/* ApexCharts, to-do, kalendarz */
+.ha-podglad .apex-tytul {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.ha-podglad .apex-stan {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 2px 0 4px;
+}
+
+.ha-podglad .apex-stan small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--secondary-text-color);
+}
+
+.ha-podglad .apex-os {
+  fill: var(--secondary-text-color);
+  font-size: 9px;
+}
+
+.ha-podglad .todo-tytul {
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.ha-podglad .todo-poz {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 6px 0;
+}
+
+.ha-podglad .todo-poz .mdi {
+  font-size: 20px;
+  color: var(--secondary-text-color);
+}
+
+.ha-podglad .todo-poz.gotowe span {
+  text-decoration: line-through;
+  color: var(--secondary-text-color);
+}
+
+.ha-podglad .todo-poz small {
+  display: block;
+  font-size: 11px;
+  color: var(--secondary-text-color);
+}
+
+.ha-podglad .kal-naglowek {
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.ha-podglad .kal-siatka {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border-top: 1px solid var(--divider-color);
+  border-left: 1px solid var(--divider-color);
+}
+
+.ha-podglad .kal-dn {
+  font-size: 11px;
+  text-align: center;
+  padding: 3px 0;
+  color: var(--secondary-text-color);
+  border-right: 1px solid var(--divider-color);
+  border-bottom: 1px solid var(--divider-color);
+}
+
+.ha-podglad .kal-dzien {
+  min-height: 54px;
+  padding: 2px;
+  font-size: 11px;
+  border-right: 1px solid var(--divider-color);
+  border-bottom: 1px solid var(--divider-color);
+  overflow: hidden;
+}
+
+.ha-podglad .kal-dzien.inny {
+  opacity: 0.4;
+}
+
+.ha-podglad .kal-dzien.dzis > span {
+  background: var(--demo-acc);
+  color: #fff;
+  border-radius: 50%;
+  padding: 0 5px;
+}
+
+.ha-podglad .kal-ev {
+  display: block;
+  font-style: normal;
+  font-size: 9px;
+  border-radius: 3px;
+  padding: 0 3px;
+  margin-top: 2px;
+  background: #e53935;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ha-podglad .kal-ev.plan {
+  background: color-mix(in srgb, var(--demo-acc) 55%, transparent);
+}
+
+/* Kompaktowy podgląd w kolumnie i pełny widok */
+.dash-preview-canvas.ha-podglad {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.dash-demo-note {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-full);
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.dash-full {
+  width: min(1440px, 96vw);
+  max-height: 92vh;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-lg);
+  background: #111111;
+  color: var(--text-main);
+  box-shadow: var(--shadow-lg);
+}
+
+.dash-full::backdrop {
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(3px);
+}
+
+.dash-full-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem 1.2rem;
+  background: #1c1c1c;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dash-full-head h3 {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  margin-right: auto;
+}
+
+.dash-full-body.ha-podglad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding: 16px;
+  align-items: start;
+}
+
+.dash-full-body .ha-sekcja.szeroka {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1100px) {
+  .dash-full-body.ha-podglad {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .dash-full-body.ha-podglad {
+    grid-template-columns: 1fr;
   }
 }
 

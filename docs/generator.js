@@ -198,6 +198,17 @@ function generateDashboardElements(uczniowie, wybrane) {
   return wynik;
 }
 
+// Struktura do podglądu: sekcje ucznia z nagłówkami i wybranymi elementami (po podstawieniu)
+function generateDashboardPreview(uczen, wybrane) {
+  const zbior = new Set(wybrane);
+  return dashSzablony().sekcje.map((s, si) => {
+    const grupy = s.grupy
+      .map(g => ({ naglowek: g.naglowek, elementy: g.elementy.filter(e => zbior.has(e.id)).map(e => ({ id: e.id, nazwa: e.nazwa, karta: e.karta })) }))
+      .filter(g => g.elementy.length);
+    return { nazwa: s.nazwa, szeroka: !!s.sekcja.column_span, tytul: s.tytul, grupy, si };
+  }).filter(s => s.grupy.length).map(s => dashPodstaw(s, uczen));
+}
+
 // Karty HACS potrzebne dla wybranych elementów
 function dashWymaganeKarty(wybrane) {
   const zbior = new Set(wybrane);
@@ -515,6 +526,7 @@ window.LibrusGenerator = {
   dashWymaganeKarty,
   generateDashboardView,
   generateDashboardElements,
+  generateDashboardPreview,
   generateAutomationsYaml,
   PROMPT_PRESETS,
   toYaml

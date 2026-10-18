@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Librus Synergia HA – Kreator Dashboardu & Narzędzia v3.0</title>
   <meta name="description" content="Oficjalna strona integracji Librus Synergia dla Home Assistant z interaktywnym generatorem paneli Lovelace, podglądem na żywo, kreatorem automatyzacji powiadomień oraz promptów AI.">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
 </head>
@@ -193,16 +194,28 @@
         <!-- Prawa kolumna: podgląd układu -->
         <aside class="dash-preview" aria-label="Podgląd układu panelu">
           <div class="dash-preview-head">
-            <span>Podgląd układu</span>
+            <span>Podgląd</span>
+            <span class="dash-demo-note" title="Podgląd pokazuje karty na wymyślonych danych">Dane przykładowe</span>
+            <button type="button" id="btnFullPreview" class="btn-tool primary">Pełny podgląd</button>
             <div id="dashPreviewTabs" class="dash-preview-tabs"></div>
           </div>
-          <div id="dashPreview" class="dash-preview-canvas"></div>
+          <div id="dashPreview" class="dash-preview-canvas ha-podglad"></div>
           <div class="dash-req">
             <h4>Wymagane karty z HACS</h4>
             <ul id="dashRequirements"></ul>
           </div>
         </aside>
       </div>
+
+      <!-- Pełny podgląd panelu -->
+      <dialog id="dashFullPreview" class="dash-full" aria-label="Pełny podgląd panelu">
+        <div class="dash-full-head">
+          <h3>Podgląd panelu</h3>
+          <span class="dash-demo-note">Dane przykładowe</span>
+          <button type="button" id="btnCloseFullPreview" class="btn-tool">Zamknij</button>
+        </div>
+        <div id="dashFullPreviewBody" class="dash-full-body ha-podglad"></div>
+      </dialog>
 
       <!-- Wynik Generatora -->
       <div id="resultBox" class="result-box">
@@ -509,6 +522,7 @@
   <!-- Skrypty logiki generatora -->
   <script src="dashboard-templates.js"></script>
   <script src="generator.js"></script>
+  <script src="dashboard-demo.js"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function() {
       // 1. Kreator dashboardu
@@ -796,39 +810,55 @@
 
       ["inputPanelTitle", "inputPanelUrl", "inputGoal"].forEach(id => document.getElementById(id).addEventListener("input", zapisz));
 
-      // --- Podgląd układu ---
+      // --- Podgląd na danych przykładowych ---
+      let odswiezPodgladTimer = null;
+
       function renderPreview() {
+        clearTimeout(odswiezPodgladTimer);
+        odswiezPodgladTimer = setTimeout(rysujPodglad, 60);
+      }
+
+      function rysujPodglad() {
         const tabs = document.getElementById("dashPreviewTabs");
         const canvas = document.getElementById("dashPreview");
         aktywnyPodglad = Math.max(0, Math.min(aktywnyPodglad, students.length - 1));
         tabs.innerHTML = students.length > 1
           ? students.map((st, i) => `<button type="button" class="dash-preview-tab${i === aktywnyPodglad ? " active" : ""}" data-idx="${i}">${esc(st.emoji)} ${esc(st.shortName || st.fullName)}</button>`).join("")
           : "";
-        const st = students[aktywnyPodglad];
-        const p = paleta(st.paletaId);
-        canvas.style.setProperty("--acc", p.acc);
-        canvas.style.setProperty("--c1", p.c1);
-        canvas.style.setProperty("--c2", p.c2);
-        const sekcje = KATALOG.map((s, si) => ({ s, si, el: s.elementy.filter(e => wybrane.has(e.id)) })).filter(x => x.el.length);
-        canvas.innerHTML = sekcje.length
-          ? sekcje.map(({ s, si, el }) => `
-            <div class="dash-mini-section${si === 0 ? " wide" : ""}">
-              <div class="dash-mini-title">${si === 0 ? `${esc(st.emoji)} ${esc(st.shortName || st.fullName)}` : esc(s.nazwa)}</div>
-              ${el.map(e => `<div class="dash-mini-card${e.id === "wizytowka" ? " hero" : ""}">${esc(e.nazwa)}</div>`).join("")}
-            </div>`).join("")
-          : `<div class="dash-mini-empty">Zaznacz elementy w kroku 2, aby zobaczyć układ panelu.</div>`;
+        const uczen = uczniowieDoGeneratora()[aktywnyPodglad];
+        canvas.style.setProperty("--demo-acc", uczen.paleta.acc);
+        const ids = Array.from(wybrane);
+        canvas.innerHTML = ids.length
+          ? window.LibrusDemo.renderujSekcje(G.generateDashboardPreview(uczen, ids), uczen)
+          : `<div class="dash-mini-empty">Zaznacz elementy w kroku 2, aby zobaczyć podgląd panelu.</div>`;
 
-        const req = G.dashWymaganeKarty(Array.from(wybrane));
+        const req = G.dashWymaganeKarty(ids);
         document.getElementById("dashRequirements").innerHTML = req.length
           ? req.map(k => `<li><a href="${k.url}" target="_blank" rel="noopener noreferrer">${esc(k.nazwa)}</a>${k.opcjonalna ? " <small>(opcjonalnie, styl wizytówki)</small>" : ""}</li>`).join("")
           : "<li>Żadne – wystarczą wbudowane karty Home Assistant.</li>";
+        if (dialogPodgladu.open) rysujPelnyPodglad();
       }
+
+      // Pełny podgląd: wszyscy uczniowie w układzie sekcji jak w HA na komputerze
+      const dialogPodgladu = document.getElementById("dashFullPreview");
+      function rysujPelnyPodglad() {
+        const ids = Array.from(wybrane);
+        document.getElementById("dashFullPreviewBody").innerHTML = ids.length
+          ? uczniowieDoGeneratora().map(u => `<div style="display:contents;--demo-acc:${u.paleta.acc}">${window.LibrusDemo.renderujSekcje(G.generateDashboardPreview(u, ids), u)}</div>`).join("")
+          : `<div class="dash-mini-empty">Zaznacz elementy w kroku 2.</div>`;
+      }
+      document.getElementById("btnFullPreview").addEventListener("click", () => {
+        rysujPelnyPodglad();
+        dialogPodgladu.showModal();
+      });
+      document.getElementById("btnCloseFullPreview").addEventListener("click", () => dialogPodgladu.close());
+      dialogPodgladu.addEventListener("click", (e) => { if (e.target === dialogPodgladu) dialogPodgladu.close(); });
 
       document.getElementById("dashPreviewTabs").addEventListener("click", (e) => {
         const btn = e.target.closest(".dash-preview-tab");
         if (!btn) return;
         aktywnyPodglad = Number(btn.dataset.idx);
-        renderPreview();
+        rysujPodglad();
       });
 
       renderStudents();
