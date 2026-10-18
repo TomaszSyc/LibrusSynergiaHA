@@ -110,168 +110,106 @@
     <div class="section-container">
       <div class="section-header">
         <span class="section-badge">Interaktywny Kreator</span>
-        <h2 class="section-title">Kreator Dashboardu Lovelace & Podgląd Live</h2>
-        <p class="section-subtitle">Wpisz dane swoich uczniów, obserwuj jak karty zmieniają się w czasie rzeczywistym i skopiuj gotowy kod YAML.</p>
+        <h2 class="section-title">Kreator Dashboardu Lovelace</h2>
+        <p class="section-subtitle">Dodaj uczniów, zaznacz elementy, które chcesz mieć na panelu, i skopiuj gotowy kod: cały pulpit, pojedynczy widok albo każdą kartę osobno.</p>
       </div>
 
       <div class="generator-dual-layout">
-        <!-- Lewa kolumna: Formularz Generatora -->
         <div class="generator-box">
           <!-- Krok 1: Uczniowie -->
           <div class="step-card">
             <div class="step-header">
               <span class="step-number">1</span>
-              <h3 class="step-title">Twoi uczniowie</h3>
+              <h3 class="step-title">Uczniowie</h3>
             </div>
-            <p class="feature-text" style="margin-bottom: 1rem;">
-              Wpisz imię i nazwisko każdego dziecka dokładnie tak, jak figuruje w Librusie (np. <em>Jan Kowalski</em>).
+            <p class="dash-help">
+              Imię i nazwisko wpisz tak, jak w Librusie (np. <em>Jan Kowalski</em>). Na tej podstawie kreator ustali identyfikatory encji, które możesz sprawdzić i poprawić w sekcji <strong>Identyfikatory encji</strong>.
             </p>
-
-            <div id="studentsList" class="students-list">
-              <!-- Wiersze generowane dynamicznie w JS -->
-            </div>
-
+            <div id="studentsList" class="dash-students"></div>
             <button type="button" id="btnAddStudent" class="btn-add-student">
               <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
               </svg>
-              Dodaj kolejnego ucznia
+              Dodaj ucznia
             </button>
           </div>
 
-          <!-- Krok 2: Opcje i Moduły -->
+          <!-- Krok 2: Elementy -->
           <div class="step-card">
             <div class="step-header">
               <span class="step-number">2</span>
-              <h3 class="step-title">Zawartość i moduły panelu</h3>
+              <h3 class="step-title">Elementy panelu</h3>
+              <span id="dashCounter" class="dash-counter"></span>
             </div>
-
-            <div class="options-grid">
-              <label class="option-checkbox-card">
-                <input type="checkbox" id="optAi" checked>
-                <div class="option-info">
-                  <span class="option-title">🤖 Moduł Sztucznej Inteligencji</span>
-                  <span class="option-desc">Karty raportu tygodniowego postępów oraz podsumowania wiadomości szkolnych.</span>
-                </div>
-              </label>
-
-              <label class="option-checkbox-card">
-                <input type="checkbox" id="optStudyTodo" checked>
-                <div class="option-info">
-                  <span class="option-title">🎮 Gamifikacja To-Do (Przygotowanie)</span>
-                  <span class="option-desc">Lista kontrolna nauki przed sprawdzianami i status odrobionej nauki.</span>
-                </div>
-              </label>
-
-              <label class="option-checkbox-card">
-                <input type="checkbox" id="optUwagi" checked>
-                <div class="option-info">
-                  <span class="option-title">🚨 Uwagi o zachowaniu</span>
-                  <span class="option-desc">Kafle i lista uwag pozytywnych, negatywnych oraz neutralnych.</span>
-                </div>
-              </label>
+            <div class="dash-toolbar" role="group" aria-label="Szybki wybór elementów">
+              <button type="button" class="dash-chip" data-preset="all">Wszystko</button>
+              <button type="button" class="dash-chip" data-preset="basic">Podstawowy</button>
+              <button type="button" class="dash-chip" data-preset="nohacs">Bez dodatków HACS</button>
+              <button type="button" class="dash-chip" data-preset="none">Nic</button>
             </div>
+            <div id="dashElements" class="dash-sections"></div>
+          </div>
 
-            <div style="margin-top: 1.25rem;">
+          <!-- Krok 3: Ustawienia -->
+          <div class="step-card">
+            <div class="step-header">
+              <span class="step-number">3</span>
+              <h3 class="step-title">Ustawienia</h3>
+            </div>
+            <div class="dash-settings">
               <div class="input-group">
-                <label for="inputPanelUrl">Adres (URL) panelu w Home Assistant</label>
-                <input type="text" id="inputPanelUrl" class="form-control" value="szkola-librus">
-                <small style="color: var(--text-muted); font-size: 0.75rem;">Np. <code>szkola-librus</code> (otworzy się pod <code>/szkola-librus</code>)</small>
+                <label for="inputPanelTitle">Tytuł widoku</label>
+                <input type="text" id="inputPanelTitle" class="form-control" value="Szkoła">
               </div>
+              <div class="input-group">
+                <label for="inputPanelUrl">Adres (URL) widoku</label>
+                <input type="text" id="inputPanelUrl" class="form-control" value="szkola-librus">
+              </div>
+              <div class="input-group">
+                <label for="inputGoal">Cel średniej (pasek)</label>
+                <input type="number" id="inputGoal" class="form-control" value="4.75" min="1" max="6" step="0.05">
+              </div>
+            </div>
+            <div class="dash-scope" role="radiogroup" aria-label="Zakres kodu">
+              <label class="dash-scope-option">
+                <input type="radio" name="dashScope" value="dashboard" checked>
+                <span><strong>Cały pulpit</strong><small>do edytora kodu pustego pulpitu</small></span>
+              </label>
+              <label class="dash-scope-option">
+                <input type="radio" name="dashScope" value="view">
+                <span><strong>Pojedynczy widok</strong><small>do istniejącego pulpitu (Edytuj w YAML)</small></span>
+              </label>
             </div>
           </div>
 
           <button type="button" id="btnGenerate" class="btn-generate">
             <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
             </svg>
-            Wygeneruj Gotowy Kod Panelu
+            Wygeneruj kod
           </button>
         </div>
 
-        <!-- Prawa kolumna: Podgląd na Żywo (Live Mockup) -->
-        <div class="live-mockup-wrapper">
-          <div class="mockup-header-bar">
-            <div class="mockup-header-title">
-              <span>🏠 Home Assistant (Podgląd Live)</span>
-            </div>
-            <span class="mockup-tag">Live Preview</span>
+        <!-- Prawa kolumna: podgląd układu -->
+        <aside class="dash-preview" aria-label="Podgląd układu panelu">
+          <div class="dash-preview-head">
+            <span>Podgląd układu</span>
+            <div id="dashPreviewTabs" class="dash-preview-tabs"></div>
           </div>
-
-          <div class="mockup-canvas">
-            <!-- Główna karta ucznia -->
-            <div class="mock-mushroom-card interactive">
-              <div id="mockIconStudent" class="mock-mushroom-icon blue">👨‍🎓</div>
-              <div class="mock-mushroom-content">
-                <div id="mockNameStudent" class="mock-mushroom-primary">Jan Kowalski</div>
-                <div class="mock-mushroom-secondary">kl. 6B · wych. mgr Anna Nowak</div>
-              </div>
-            </div>
-
-            <!-- Średnia i Szczęśliwy numerek -->
-            <div class="mock-grid-2">
-              <div class="mock-mushroom-card">
-                <div class="mock-mushroom-icon green">📈</div>
-                <div class="mock-mushroom-content">
-                  <div class="mock-mushroom-primary">4.85</div>
-                  <div class="mock-mushroom-secondary">Średnia ocen</div>
-                </div>
-              </div>
-              <div class="mock-mushroom-card">
-                <div class="mock-mushroom-icon green">🍀</div>
-                <div class="mock-mushroom-content">
-                  <div class="mock-mushroom-primary">14</div>
-                  <div class="mock-mushroom-secondary">Mój numerek!</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- To-Do Gamifikacja (Interaktywne Demo) -->
-            <div id="mockSectionTodo" class="mock-todo-box">
-              <div class="mock-todo-title">
-                <span>Wyzwania do sprawdzianów</span>
-                <span id="mockTodoStatusBadge" style="color: #fbbf24; font-weight: 700;">⚠️ Do nauki</span>
-              </div>
-              <label class="mock-todo-item" id="todoItem1">
-                <input type="checkbox" id="checkTodo1">
-                <span>Nauka: Matematyka (Sprawdzian z ułamków)</span>
-              </label>
-              <label class="mock-todo-item" id="todoItem2">
-                <input type="checkbox" id="checkTodo2">
-                <span>Nauka: Historia (Kartkówka - Piastowie)</span>
-              </label>
-            </div>
-
-            <!-- Uwagi ze szkoły -->
-            <div id="mockSectionUwagi" class="mock-mushroom-card">
-              <div class="mock-mushroom-icon green">👍</div>
-              <div class="mock-mushroom-content">
-                <div class="mock-mushroom-primary">1 uwaga pozytywna</div>
-                <div class="mock-mushroom-secondary">Aktywny udział w akademii szkolnej</div>
-              </div>
-            </div>
-
-            <!-- AI Raport Tygodnia -->
-            <div id="mockSectionAi" class="mock-ai-banner">
-              <div class="mock-ai-header">
-                <span>🤖 Asystent AI · Raport Tygodniowy</span>
-              </div>
-              <div class="mock-ai-text">
-                „Świetny tydzień w wykonaniu <strong id="mockAiKidName">Jana</strong>! Zdobyte oceny 5 z geografii i 5+ z angielskiego. Pamiętajcie o klasówce z matematyki w najbliższy wtorek!”
-              </div>
-            </div>
+          <div id="dashPreview" class="dash-preview-canvas"></div>
+          <div class="dash-req">
+            <h4>Wymagane karty z HACS</h4>
+            <ul id="dashRequirements"></ul>
           </div>
-        </div>
+        </aside>
       </div>
 
       <!-- Wynik Generatora -->
       <div id="resultBox" class="result-box">
         <div class="result-toolbar">
-          <div class="result-title">
-            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
-            <span>Kod konfiguracji Dashboardu Lovelace</span>
+          <div class="dash-tabs" role="tablist">
+            <button type="button" id="tabView" class="dash-tab active" role="tab" aria-selected="true">Cały kod</button>
+            <button type="button" id="tabElements" class="dash-tab" role="tab" aria-selected="false">Każdy element osobno</button>
           </div>
           <div class="result-actions">
             <button type="button" id="btnToggleFormat" class="btn-tool">Format: YAML</button>
@@ -279,19 +217,21 @@
               <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
               </svg>
-              Kopiuj do schowka
+              Kopiuj
             </button>
             <button type="button" id="btnDownload" class="btn-tool">
               <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
               </svg>
-              Pobierz .yaml
+              Pobierz
             </button>
           </div>
         </div>
-        <div class="code-container">
+        <p id="resultHint" class="dash-hint"></p>
+        <div id="resultView" class="code-container">
           <pre><code id="outputCode"></code></pre>
         </div>
+        <div id="resultElements" class="dash-results" hidden></div>
       </div>
     </div>
   </section>
@@ -567,180 +507,410 @@
   </div>
 
   <!-- Skrypty logiki generatora -->
+  <script src="dashboard-templates.js"></script>
   <script src="generator.js"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function() {
-      // 1. Elementy Generatora Dashboardu
+      // 1. Kreator dashboardu
+      const G = window.LibrusGenerator;
       const studentsContainer = document.getElementById("studentsList");
-      const btnAddStudent = document.getElementById("btnAddStudent");
-      const btnGenerate = document.getElementById("btnGenerate");
+      const elementsContainer = document.getElementById("dashElements");
       const resultBox = document.getElementById("resultBox");
       const outputCode = document.getElementById("outputCode");
+      const resultView = document.getElementById("resultView");
+      const resultElements = document.getElementById("resultElements");
+      const resultHint = document.getElementById("resultHint");
+      const btnToggleFormat = document.getElementById("btnToggleFormat");
       const btnCopy = document.getElementById("btnCopy");
       const btnDownload = document.getElementById("btnDownload");
-      const btnToggleFormat = document.getElementById("btnToggleFormat");
+      const tabView = document.getElementById("tabView");
+      const tabElements = document.getElementById("tabElements");
       const toast = document.getElementById("toast");
 
-      // Live Mockup elementy
-      const mockNameStudent = document.getElementById("mockNameStudent");
-      const mockIconStudent = document.getElementById("mockIconStudent");
-      const mockAiKidName = document.getElementById("mockAiKidName");
-      const mockSectionTodo = document.getElementById("mockSectionTodo");
-      const mockSectionUwagi = document.getElementById("mockSectionUwagi");
-      const mockSectionAi = document.getElementById("mockSectionAi");
-      const checkTodo1 = document.getElementById("checkTodo1");
-      const checkTodo2 = document.getElementById("checkTodo2");
-      const todoItem1 = document.getElementById("todoItem1");
-      const todoItem2 = document.getElementById("todoItem2");
-      const mockTodoStatusBadge = document.getElementById("mockTodoStatusBadge");
+      const KATALOG = G.dashKatalog();
+      const WSZYSTKIE = KATALOG.flatMap(s => s.elementy.map(e => e.id));
+      const ZESTAWY = {
+        all: WSZYSTKIE,
+        none: [],
+        basic: ["naglowek", "wizytowka", "alerty", "kafle", "dzien", "odliczanie", "zmiany", "plan", "nadchodzace", "oceny_najnowsze", "frekwencja", "wiadomosci"],
+        nohacs: KATALOG.flatMap(s => s.elementy.filter(e => e.wymaga.every(w => w === "card-mod")).map(e => e.id)),
+      };
+      const ZAPIS = "librusKreatorDashboardu";
 
-      let generatedConfigObj = null;
+      const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      const paleta = (id) => G.DASH_PALETY.find(p => p.id === id) || G.DASH_PALETY[0];
+
+      function nowyUczen(fullName, nr) {
+        const shortName = G.getShortName(fullName);
+        return {
+          fullName,
+          shortName,
+          emoji: G.detectGenderIcon(shortName) === "mdi:face-woman" ? "👧" : "🧑‍🎓",
+          paletaId: G.DASH_PALETY[nr % G.DASH_PALETY.length].id,
+          wlasneEncje: {},
+        };
+      }
+
+      let students = [nowyUczen("Jan Kowalski", 0)];
+      let wybrane = new Set(WSZYSTKIE);
+      let aktywnyPodglad = 0;
+      let generatedObj = null;
+      let generatedElements = [];
       let currentFormat = "yaml";
+      let currentTab = "view";
 
-      let students = [
-        { fullName: "Jan Kowalski", shortName: "Jan", icon: "mdi:face-man" }
-      ];
+      // Zapamiętanie ustawień w przeglądarce (tylko wygoda, bez tego też działa)
+      try {
+        const zapis = JSON.parse(localStorage.getItem(ZAPIS) || "null");
+        if (zapis && Array.isArray(zapis.students) && zapis.students.length) {
+          students = zapis.students.map((s, i) => Object.assign(nowyUczen(s.fullName || "Jan Kowalski", i), s, { wlasneEncje: s.wlasneEncje || {} }));
+          wybrane = new Set((zapis.wybrane || WSZYSTKIE).filter(id => WSZYSTKIE.includes(id)));
+          ["inputPanelTitle", "inputPanelUrl", "inputGoal"].forEach(id => {
+            if (zapis[id]) document.getElementById(id).value = zapis[id];
+          });
+        }
+      } catch (e) { /* brak dostępu do localStorage - zostają wartości domyślne */ }
 
-      function updateLiveMockup() {
-        const primaryStudent = students[0] || { fullName: "Jan Kowalski", shortName: "Jan", icon: "mdi:face-man" };
-        mockNameStudent.textContent = primaryStudent.fullName || "Jan Kowalski";
-        mockAiKidName.textContent = primaryStudent.shortName || "Jana";
-        mockIconStudent.textContent = primaryStudent.icon === "mdi:face-woman" ? "👩‍🎓" : "👨‍🎓";
-
-        mockSectionAi.style.display = document.getElementById("optAi").checked ? "block" : "none";
-        mockSectionTodo.style.display = document.getElementById("optStudyTodo").checked ? "block" : "none";
-        mockSectionUwagi.style.display = document.getElementById("optUwagi").checked ? "flex" : "none";
+      function zapisz() {
+        try {
+          const dane = { students, wybrane: Array.from(wybrane) };
+          ["inputPanelTitle", "inputPanelUrl", "inputGoal"].forEach(id => { dane[id] = document.getElementById(id).value; });
+          localStorage.setItem(ZAPIS, JSON.stringify(dane));
+        } catch (e) { /* zapis niedostępny */ }
       }
 
+      function encjeUcznia(st) {
+        return Object.assign(G.dashDomyslneEncje(st.fullName), st.wlasneEncje);
+      }
+
+      function uczniowieDoGeneratora() {
+        const cel = document.getElementById("inputGoal").value;
+        return students.map(st => ({
+          fullName: st.fullName,
+          shortName: st.shortName,
+          emoji: st.emoji,
+          paleta: paleta(st.paletaId),
+          cel,
+          encje: encjeUcznia(st),
+        }));
+      }
+
+      // --- Uczniowie ---
       function renderStudents() {
-        studentsContainer.innerHTML = "";
-        students.forEach((st, idx) => {
-          const row = document.createElement("div");
-          row.className = "student-row";
-          row.innerHTML = `
-            <div class="input-group">
-              <label>Pełne Imię i Nazwisko</label>
-              <input type="text" class="form-control input-fullname" data-idx="${idx}" value="${st.fullName}" placeholder="np. Jan Kowalski">
+        studentsContainer.innerHTML = students.map((st, idx) => {
+          const p = paleta(st.paletaId);
+          const encje = encjeUcznia(st);
+          const ileWlasnych = Object.keys(st.wlasneEncje).length;
+          return `
+          <div class="dash-student" data-idx="${idx}" style="--c1:${p.c1};--c2:${p.c2}">
+            <div class="dash-student-head">
+              <div class="dash-avatar" aria-hidden="true">${esc(st.emoji)}</div>
+              <div class="dash-student-fields">
+                <div class="input-group">
+                  <label>Imię i nazwisko</label>
+                  <input type="text" class="form-control js-fullname" value="${esc(st.fullName)}" placeholder="np. Jan Kowalski">
+                </div>
+                <div class="input-group">
+                  <label>Imię na panelu</label>
+                  <input type="text" class="form-control js-shortname" value="${esc(st.shortName)}" placeholder="np. Jan">
+                </div>
+              </div>
+              ${students.length > 1 ? `<button type="button" class="btn-icon-danger js-remove" title="Usuń ucznia" aria-label="Usuń ucznia">&times;</button>` : ""}
             </div>
-            <div class="input-group">
-              <label>Imię (etykieta)</label>
-              <input type="text" class="form-control input-shortname" data-idx="${idx}" value="${st.shortName}" placeholder="np. Jan">
+            <div class="dash-student-pickers">
+              <div class="dash-picker">
+                <span class="dash-picker-label">Emoji</span>
+                <div class="dash-picker-options">
+                  ${G.DASH_EMOJI.map(em => `<button type="button" class="dash-emoji js-emoji${em === st.emoji ? " active" : ""}" data-emoji="${esc(em)}" aria-pressed="${em === st.emoji}">${esc(em)}</button>`).join("")}
+                </div>
+              </div>
+              <div class="dash-picker">
+                <span class="dash-picker-label">Kolory</span>
+                <div class="dash-picker-options">
+                  ${G.DASH_PALETY.map(pp => `<button type="button" class="dash-swatch js-paleta${pp.id === st.paletaId ? " active" : ""}" data-paleta="${pp.id}" title="${esc(pp.nazwa)}" aria-label="${esc(pp.nazwa)}" aria-pressed="${pp.id === st.paletaId}" style="background:linear-gradient(135deg, ${pp.c1}, ${pp.c2})"></button>`).join("")}
+                </div>
+              </div>
             </div>
-            <div class="input-group">
-              <label>Ikona</label>
-              <select class="form-control select-icon" data-idx="${idx}">
-                <option value="mdi:face-man" ${st.icon === 'mdi:face-man' ? 'selected' : ''}>Chłopiec</option>
-                <option value="mdi:face-woman" ${st.icon === 'mdi:face-woman' ? 'selected' : ''}>Dziewczynka</option>
-                <option value="mdi:account-school" ${st.icon === 'mdi:account-school' ? 'selected' : ''}>Uczeń</option>
-              </select>
-            </div>
-            <div>
-              ${students.length > 1 ? `
-                <button type="button" class="btn-icon-danger btn-remove" data-idx="${idx}" title="Usuń ucznia">&times;</button>
-              ` : `<div></div>`}
-            </div>
-          `;
-          studentsContainer.appendChild(row);
-        });
-
-        document.querySelectorAll(".input-fullname").forEach(el => {
-          el.addEventListener("input", function(e) {
-            const idx = parseInt(e.target.dataset.idx, 10);
-            students[idx].fullName = e.target.value;
-            const shortName = window.LibrusGenerator.getShortName(e.target.value);
-            students[idx].shortName = shortName;
-            students[idx].icon = window.LibrusGenerator.detectGenderIcon(shortName);
-            
-            const shortInput = studentsContainer.querySelector(`.input-shortname[data-idx="${idx}"]`);
-            if (shortInput) shortInput.value = shortName;
-            const selectIcon = studentsContainer.querySelector(`.select-icon[data-idx="${idx}"]`);
-            if (selectIcon) selectIcon.value = students[idx].icon;
-            updateLiveMockup();
-          });
-        });
-
-        document.querySelectorAll(".input-shortname").forEach(el => {
-          el.addEventListener("input", function(e) {
-            const idx = parseInt(e.target.dataset.idx, 10);
-            students[idx].shortName = e.target.value;
-            updateLiveMockup();
-          });
-        });
-
-        document.querySelectorAll(".select-icon").forEach(el => {
-          el.addEventListener("change", function(e) {
-            const idx = parseInt(e.target.dataset.idx, 10);
-            students[idx].icon = e.target.value;
-            updateLiveMockup();
-          });
-        });
-
-        document.querySelectorAll(".btn-remove").forEach(el => {
-          el.addEventListener("click", function(e) {
-            const idx = parseInt(e.currentTarget.dataset.idx, 10);
-            students.splice(idx, 1);
-            renderStudents();
-            updateLiveMockup();
-          });
-        });
-
-        updateLiveMockup();
+            <details class="dash-entities">
+              <summary>Identyfikatory encji <span class="dash-entities-status">${ileWlasnych ? `${ileWlasnych} zmienione` : "wg wzorca"}</span></summary>
+              <p class="dash-help">Jeśli Twoje encje mają inne nazwy, wklej ich listę (np. z <em>Narzędzia deweloperskie → Stany</em>, filtr <code>librus</code>) i kliknij <strong>Dopasuj</strong> albo popraw pola ręcznie.</p>
+              <textarea class="form-control dash-paste js-paste" rows="3" placeholder="sensor.librus_jan_kowalski_oceny&#10;sensor.librus_jan_kowalski_frekwencja&#10;…"></textarea>
+              <div class="dash-entities-actions">
+                <button type="button" class="btn-tool primary js-match">Dopasuj</button>
+                <button type="button" class="btn-tool js-reset">Przywróć wzorzec</button>
+                <span class="dash-match-result js-match-result" role="status"></span>
+              </div>
+              <div class="dash-entity-grid">
+                ${G.DASH_ENCJE.map(e => `
+                  <label class="dash-entity">
+                    <span>${esc(e.nazwa)}</span>
+                    <input type="text" class="form-control js-entity${st.wlasneEncje[e.klucz] ? " changed" : ""}" data-klucz="${e.klucz}" value="${esc(encje[e.klucz])}" spellcheck="false">
+                  </label>`).join("")}
+              </div>
+            </details>
+          </div>`;
+        }).join("");
+        renderPreview();
       }
 
-      btnAddStudent.addEventListener("click", function() {
-        students.push({ fullName: "Anna Nowak", shortName: "Anna", icon: "mdi:face-woman" });
-        renderStudents();
+      function odswiezEncjeUcznia(card, st) {
+        const encje = encjeUcznia(st);
+        card.querySelectorAll(".js-entity").forEach(inp => {
+          inp.value = encje[inp.dataset.klucz];
+          inp.classList.toggle("changed", !!st.wlasneEncje[inp.dataset.klucz]);
+        });
+        const ile = Object.keys(st.wlasneEncje).length;
+        card.querySelector(".dash-entities-status").textContent = ile ? `${ile} zmienione` : "wg wzorca";
+      }
+
+      studentsContainer.addEventListener("input", (e) => {
+        const card = e.target.closest(".dash-student");
+        if (!card) return;
+        const st = students[Number(card.dataset.idx)];
+        if (e.target.classList.contains("js-fullname")) {
+          st.fullName = e.target.value;
+          st.shortName = G.getShortName(e.target.value);
+          card.querySelector(".js-shortname").value = st.shortName;
+          odswiezEncjeUcznia(card, st);
+        } else if (e.target.classList.contains("js-shortname")) {
+          st.shortName = e.target.value;
+        } else if (e.target.classList.contains("js-entity")) {
+          const klucz = e.target.dataset.klucz;
+          const domyslna = G.dashDomyslneEncje(st.fullName)[klucz];
+          const wartosc = e.target.value.trim();
+          if (wartosc && wartosc !== domyslna) st.wlasneEncje[klucz] = wartosc; else delete st.wlasneEncje[klucz];
+          e.target.classList.toggle("changed", !!st.wlasneEncje[klucz]);
+          const ile = Object.keys(st.wlasneEncje).length;
+          card.querySelector(".dash-entities-status").textContent = ile ? `${ile} zmienione` : "wg wzorca";
+        }
+        renderPreview();
+        zapisz();
       });
 
-      document.getElementById("optAi").addEventListener("change", updateLiveMockup);
-      document.getElementById("optStudyTodo").addEventListener("change", updateLiveMockup);
-      document.getElementById("optUwagi").addEventListener("change", updateLiveMockup);
-
-      // Interaktywne demo checkboxów To-Do
-      function updateTodoDemo() {
-        if (checkTodo1.checked) todoItem1.classList.add("done"); else todoItem1.classList.remove("done");
-        if (checkTodo2.checked) todoItem2.classList.add("done"); else todoItem2.classList.remove("done");
-        if (checkTodo1.checked && checkTodo2.checked) {
-          mockTodoStatusBadge.textContent = "🎉 Odrobione!";
-          mockTodoStatusBadge.style.color = "#34d399";
-        } else {
-          mockTodoStatusBadge.textContent = "⚠️ Do nauki";
-          mockTodoStatusBadge.style.color = "#fbbf24";
+      studentsContainer.addEventListener("click", (e) => {
+        const card = e.target.closest(".dash-student");
+        if (!card) return;
+        const idx = Number(card.dataset.idx);
+        const st = students[idx];
+        const btn = e.target.closest("button");
+        if (!btn) return;
+        if (btn.classList.contains("js-remove")) {
+          students.splice(idx, 1);
+          aktywnyPodglad = Math.min(aktywnyPodglad, students.length - 1);
+          renderStudents();
+        } else if (btn.classList.contains("js-emoji")) {
+          st.emoji = btn.dataset.emoji;
+          renderStudents();
+        } else if (btn.classList.contains("js-paleta")) {
+          st.paletaId = btn.dataset.paleta;
+          renderStudents();
+        } else if (btn.classList.contains("js-match")) {
+          const znalezione = G.dashDopasujEncje(card.querySelector(".js-paste").value, st.fullName);
+          const domyslne = G.dashDomyslneEncje(st.fullName);
+          Object.entries(znalezione).forEach(([k, v]) => {
+            if (v !== domyslne[k]) st.wlasneEncje[k] = v; else delete st.wlasneEncje[k];
+          });
+          odswiezEncjeUcznia(card, st);
+          const ile = Object.keys(znalezione).length;
+          card.querySelector(".js-match-result").textContent = ile
+            ? `Dopasowano ${ile} z ${G.DASH_ENCJE.length}`
+            : "Nie znaleziono encji tego ucznia - sprawdź imię i nazwisko";
+        } else if (btn.classList.contains("js-reset")) {
+          st.wlasneEncje = {};
+          odswiezEncjeUcznia(card, st);
+          card.querySelector(".js-match-result").textContent = "";
         }
+        zapisz();
+      });
+
+      document.getElementById("btnAddStudent").addEventListener("click", () => {
+        students.push(nowyUczen("Anna Kowalska", students.length));
+        aktywnyPodglad = students.length - 1;
+        renderStudents();
+        zapisz();
+      });
+
+      // --- Elementy ---
+      const ETYKIETY_HACS = { "button-card": "button-card", "mushroom": "Mushroom", "apexcharts-card": "ApexCharts", "card-mod": "card-mod" };
+
+      function renderElements() {
+        elementsContainer.innerHTML = KATALOG.map((s, si) => `
+          <div class="dash-section" data-sekcja="${si}">
+            <label class="dash-section-head">
+              <input type="checkbox" class="js-section">
+              <span class="dash-section-name">${esc(s.nazwa)}</span>
+              <span class="dash-section-count"></span>
+            </label>
+            <div class="dash-element-grid">
+              ${s.elementy.map(e => `
+                <label class="dash-element">
+                  <input type="checkbox" class="js-element" value="${e.id}">
+                  <span class="dash-element-body">
+                    <span class="dash-element-name">${esc(e.nazwa)}</span>
+                    <span class="dash-element-desc">${esc(e.opis)}</span>
+                    ${e.wymaga.length ? `<span class="dash-badges">${e.wymaga.map(w => `<span class="dash-badge${w === "card-mod" ? " soft" : ""}">${ETYKIETY_HACS[w] || w}</span>`).join("")}</span>` : ""}
+                  </span>
+                </label>`).join("")}
+            </div>
+          </div>`).join("");
+        syncElements();
       }
-      checkTodo1.addEventListener("change", updateTodoDemo);
-      checkTodo2.addEventListener("change", updateTodoDemo);
+
+      function syncElements() {
+        elementsContainer.querySelectorAll(".dash-section").forEach(sec => {
+          const boxy = Array.from(sec.querySelectorAll(".js-element"));
+          boxy.forEach(b => { b.checked = wybrane.has(b.value); });
+          const ile = boxy.filter(b => b.checked).length;
+          const glowny = sec.querySelector(".js-section");
+          glowny.checked = ile === boxy.length;
+          glowny.indeterminate = ile > 0 && ile < boxy.length;
+          sec.querySelector(".dash-section-count").textContent = `${ile}/${boxy.length}`;
+          sec.classList.toggle("empty", ile === 0);
+        });
+        document.getElementById("dashCounter").textContent = `${wybrane.size} z ${WSZYSTKIE.length}`;
+        document.querySelectorAll(".dash-chip").forEach(chip => {
+          const zestaw = ZESTAWY[chip.dataset.preset];
+          chip.classList.toggle("active", zestaw.length === wybrane.size && zestaw.every(id => wybrane.has(id)));
+        });
+        renderPreview();
+      }
+
+      elementsContainer.addEventListener("change", (e) => {
+        if (e.target.classList.contains("js-element")) {
+          if (e.target.checked) wybrane.add(e.target.value); else wybrane.delete(e.target.value);
+        } else if (e.target.classList.contains("js-section")) {
+          const sec = e.target.closest(".dash-section");
+          sec.querySelectorAll(".js-element").forEach(b => {
+            if (e.target.checked) wybrane.add(b.value); else wybrane.delete(b.value);
+          });
+        }
+        syncElements();
+        zapisz();
+      });
+
+      document.querySelectorAll(".dash-chip").forEach(chip => chip.addEventListener("click", () => {
+        wybrane = new Set(ZESTAWY[chip.dataset.preset]);
+        syncElements();
+        zapisz();
+      }));
+
+      ["inputPanelTitle", "inputPanelUrl", "inputGoal"].forEach(id => document.getElementById(id).addEventListener("input", zapisz));
+
+      // --- Podgląd układu ---
+      function renderPreview() {
+        const tabs = document.getElementById("dashPreviewTabs");
+        const canvas = document.getElementById("dashPreview");
+        aktywnyPodglad = Math.max(0, Math.min(aktywnyPodglad, students.length - 1));
+        tabs.innerHTML = students.length > 1
+          ? students.map((st, i) => `<button type="button" class="dash-preview-tab${i === aktywnyPodglad ? " active" : ""}" data-idx="${i}">${esc(st.emoji)} ${esc(st.shortName || st.fullName)}</button>`).join("")
+          : "";
+        const st = students[aktywnyPodglad];
+        const p = paleta(st.paletaId);
+        canvas.style.setProperty("--acc", p.acc);
+        canvas.style.setProperty("--c1", p.c1);
+        canvas.style.setProperty("--c2", p.c2);
+        const sekcje = KATALOG.map((s, si) => ({ s, si, el: s.elementy.filter(e => wybrane.has(e.id)) })).filter(x => x.el.length);
+        canvas.innerHTML = sekcje.length
+          ? sekcje.map(({ s, si, el }) => `
+            <div class="dash-mini-section${si === 0 ? " wide" : ""}">
+              <div class="dash-mini-title">${si === 0 ? `${esc(st.emoji)} ${esc(st.shortName || st.fullName)}` : esc(s.nazwa)}</div>
+              ${el.map(e => `<div class="dash-mini-card${e.id === "wizytowka" ? " hero" : ""}">${esc(e.nazwa)}</div>`).join("")}
+            </div>`).join("")
+          : `<div class="dash-mini-empty">Zaznacz elementy w kroku 2, aby zobaczyć układ panelu.</div>`;
+
+        const req = G.dashWymaganeKarty(Array.from(wybrane));
+        document.getElementById("dashRequirements").innerHTML = req.length
+          ? req.map(k => `<li><a href="${k.url}" target="_blank" rel="noopener noreferrer">${esc(k.nazwa)}</a>${k.opcjonalna ? " <small>(opcjonalnie, styl wizytówki)</small>" : ""}</li>`).join("")
+          : "<li>Żadne – wystarczą wbudowane karty Home Assistant.</li>";
+      }
+
+      document.getElementById("dashPreviewTabs").addEventListener("click", (e) => {
+        const btn = e.target.closest(".dash-preview-tab");
+        if (!btn) return;
+        aktywnyPodglad = Number(btn.dataset.idx);
+        renderPreview();
+      });
 
       renderStudents();
+      renderElements();
 
-      function updateCodeOutput() {
-        if (!generatedConfigObj) return;
-        if (currentFormat === "yaml") {
-          outputCode.textContent = "# Wygenerowano przez Kreator Librus Synergia HA\n" + window.LibrusGenerator.toYaml(generatedConfigObj);
-          btnToggleFormat.textContent = "Format: YAML (kliknij na JSON)";
-        } else {
-          outputCode.textContent = JSON.stringify(generatedConfigObj, null, 2);
-          btnToggleFormat.textContent = "Format: JSON (kliknij na YAML)";
+      // --- Wynik ---
+      const PODPOWIEDZI = {
+        dashboard: "Utwórz pusty pulpit, otwórz go, kliknij ✏️ Edytuj → ⋮ → Edytor kodu (Raw Configuration Editor), zastąp całą zawartość tym kodem i zapisz.",
+        view: "Na istniejącym pulpicie kliknij ✏️ Edytuj, dodaj nowy widok (+) lub otwórz istniejący, wybierz ⋮ → Edytuj w YAML, wklej kod i zapisz.",
+        elements: "Każdą kartę wklejasz osobno: ✏️ Edytuj pulpit → Dodaj kartę → Ręcznie (YAML). Karty z button-card, Mushroom lub ApexCharts wymagają tych dodatków z HACS.",
+      };
+
+      function zakres() {
+        return document.querySelector('input[name="dashScope"]:checked').value;
+      }
+
+      function kodCalosci() {
+        if (!generatedObj) return "";
+        return currentFormat === "yaml"
+          ? "# Wygenerowano przez Kreator Librus Synergia HA\n" + G.toYaml(generatedObj) + "\n"
+          : JSON.stringify(generatedObj, null, 2);
+      }
+
+      function renderResult() {
+        const widokCalosci = currentTab === "view";
+        tabView.classList.toggle("active", widokCalosci);
+        tabElements.classList.toggle("active", !widokCalosci);
+        tabView.setAttribute("aria-selected", String(widokCalosci));
+        tabElements.setAttribute("aria-selected", String(!widokCalosci));
+        resultView.hidden = !widokCalosci;
+        resultElements.hidden = widokCalosci;
+        btnToggleFormat.hidden = !widokCalosci;
+        btnCopy.hidden = !widokCalosci;
+        btnToggleFormat.textContent = currentFormat === "yaml" ? "Format: YAML" : "Format: JSON";
+        resultHint.textContent = widokCalosci ? PODPOWIEDZI[zakres()] : PODPOWIEDZI.elements;
+        outputCode.textContent = kodCalosci();
+        if (!widokCalosci) {
+          resultElements.innerHTML = generatedElements.length
+            ? generatedElements.map((e, i) => `
+              <details class="dash-result">
+                <summary>
+                  <span class="dash-result-title"><strong>${esc(e.nazwa)}</strong><small>${esc(e.uczen)} · ${esc(e.sekcja)}</small></span>
+                  ${e.wymaga.map(w => `<span class="dash-badge${w === "card-mod" ? " soft" : ""}">${ETYKIETY_HACS[w] || w}</span>`).join("")}
+                  <button type="button" class="btn-tool primary js-copy-element" data-i="${i}">Kopiuj</button>
+                </summary>
+                <pre><code>${esc(e.yaml)}</code></pre>
+              </details>`).join("")
+            : `<p class="dash-hint">Nie zaznaczono żadnych elementów.</p>`;
         }
       }
 
-      btnGenerate.addEventListener("click", function() {
-        const panelUrl = document.getElementById("inputPanelUrl").value.trim() || "szkola-librus";
-        const options = {
-          enableAi: document.getElementById("optAi").checked,
-          enableStudyTodo: document.getElementById("optStudyTodo").checked,
-          enableUwagi: document.getElementById("optUwagi").checked
-        };
-
-        generatedConfigObj = window.LibrusGenerator.generateDashboardConfig(students, panelUrl, options);
-        updateCodeOutput();
+      document.getElementById("btnGenerate").addEventListener("click", () => {
+        if (!wybrane.size) {
+          showToast("Zaznacz co najmniej jeden element panelu");
+          return;
+        }
+        const uczniowie = uczniowieDoGeneratora();
+        const ids = Array.from(wybrane);
+        const widok = G.generateDashboardView(uczniowie, ids, {
+          tytul: document.getElementById("inputPanelTitle").value.trim() || "Szkoła",
+          sciezka: document.getElementById("inputPanelUrl").value.trim() || "szkola-librus",
+        });
+        generatedObj = zakres() === "dashboard" ? { title: widok.title, views: [widok] } : widok;
+        generatedElements = G.generateDashboardElements(uczniowie, ids).map(e => Object.assign(e, { yaml: G.toYaml(e.karta) + "\n" }));
+        renderResult();
         resultBox.classList.add("active");
         resultBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
       });
 
-      btnToggleFormat.addEventListener("click", function() {
+      tabView.addEventListener("click", () => { currentTab = "view"; renderResult(); });
+      tabElements.addEventListener("click", () => { currentTab = "elements"; renderResult(); });
+      btnToggleFormat.addEventListener("click", () => {
         currentFormat = currentFormat === "yaml" ? "json" : "yaml";
-        updateCodeOutput();
+        renderResult();
+      });
+
+      resultElements.addEventListener("click", (e) => {
+        const btn = e.target.closest(".js-copy-element");
+        if (!btn) return;
+        e.preventDefault();
+        const el = generatedElements[Number(btn.dataset.i)];
+        navigator.clipboard.writeText(el.yaml).then(() => showToast(`Skopiowano kartę: ${el.nazwa}`));
       });
 
       function showToast(msg) {
@@ -749,26 +919,38 @@
         setTimeout(() => toast.classList.remove("show"), 3000);
       }
 
-      btnCopy.addEventListener("click", function() {
-        const text = outputCode.textContent;
+      btnCopy.addEventListener("click", () => {
+        const text = kodCalosci();
         if (!text) return;
-        navigator.clipboard.writeText(text).then(() => showToast("Skopiowano kod panelu do schowka!"));
+        navigator.clipboard.writeText(text).then(() => showToast("Skopiowano kod do schowka!"));
       });
 
-      btnDownload.addEventListener("click", function() {
-        const text = outputCode.textContent;
-        if (!text) return;
-        const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      function pobierz(tekst, nazwa) {
+        const blob = new Blob([tekst], { type: "text/plain;charset=utf-8" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = currentFormat === "yaml" ? "dashboard_librus.yaml" : "dashboard_librus.json";
+        a.download = nazwa;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        showToast("Pobrano plik panelu!");
+        showToast(`Pobrano plik ${nazwa}`);
+      }
+
+      btnDownload.addEventListener("click", () => {
+        if (!generatedObj) return;
+        if (currentTab === "view") {
+          pobierz(kodCalosci(), currentFormat === "yaml" ? "dashboard_librus.yaml" : "dashboard_librus.json");
+        } else {
+          const tekst = generatedElements.map(e => `# ${e.uczen} / ${e.nazwa}\n${e.yaml}`).join("---\n");
+          pobierz(tekst, "karty_librus.yaml");
+        }
       });
+
+      document.querySelectorAll('input[name="dashScope"]').forEach(r => r.addEventListener("change", () => {
+        if (resultBox.classList.contains("active")) document.getElementById("btnGenerate").click();
+      }));
 
       // 2. Automatyzacje Powiadomień
       const btnGenerateAuto = document.getElementById("btnGenerateAuto");

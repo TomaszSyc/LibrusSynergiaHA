@@ -1,5 +1,5 @@
 /**
- * Librus Synergia HA - Dashboard Generator (v3.0)
+ * Librus Synergia HA - Dashboard Generator
  * Generator panelu Lovelace, podglądu na żywo i automatyzacji dla Home Assistant.
  */
 
@@ -28,419 +28,184 @@ function detectGenderIcon(krotkaNazwa) {
   return "mdi:face-man";
 }
 
-// Szablony Jinja2 (zgodne z generuj_panel.py i nowościami v3.0)
-const KOL = "{% set kol = {'6':'#2e7d32','5':'#43a047','4':'#7cb342','3':'#f9a825','2':'#ef6c00','1':'#c62828'} %}";
+// ===================================================================
+// Kreator dashboardu: elementy z dashboard-templates.js
+// (budowane przez scripts/build_dashboard_templates.py)
+// ===================================================================
 
-function planNextTpl(p) {
-  return `{% set p = 'sensor.${p}_' %}
-{% set dni = state_attr(p ~ 'plan_lekcji', 'kolejne_7_dni') or [] %}
-{% set today = now().strftime('%Y-%m-%d') %}{% set hm = now().strftime('%H:%M') %}
-{% set ns = namespace(d=none) %}
-{% for d in dni if ns.d is none and d.lekcje | length > 0 %}{% if d.data > today or (d.data == today and hm < (d.lekcje | map(attribute='godzina_do') | select('match', '[0-9]') | list | last | default('00:00'))) %}{% set ns.d = d %}{% endif %}{% endfor %}
-{% if ns.d is none %}Brak lekcji w najbliższych dniach 🎉{% else %}{% set d = ns.d %}
-{% set jutro = (now() + timedelta(days=1)).strftime('%Y-%m-%d') %}
-### {{ 'Dziś' if d.data == today else ('Jutro' if d.data == jutro else d.dzien_tygodnia) }} · {{ d.lekcje[0].godzina_od }}–{{ d.lekcje[-1].godzina_do }}
-| | Godz. | Przedmiot | Sala |
-|---|---|---|---|
-{% for l in d.lekcje %}{% set teraz = d.data == today and l.godzina_od <= hm < l.godzina_do %}{% set ev = (l.get('zdarzenie') or '') | lower %}| {{ '▶' if teraz else (l.numer if l.numer is not none else 0) }} | {{ l.godzina_od }} | {% if l.get('odwolana') %}~~{{ l.przedmiot }}~~ ❌{% elif l.get('zastepstwo') %}**{{ l.przedmiot }}** 🔄{% else %}**{{ l.przedmiot }}**{% endif %}{% if l.get('dzd') %} <small>*dodatkowe*</small>{% endif %}{% if 'sprawdzian' in ev %} 🔴{% elif 'kartk' in ev %} 🟠{% elif ev %} 🔵{% endif %} | {{ (l.get('sala') or '') | replace('s. ','') }} |
-{% endfor %}{% endif %}`;
+// Encje używane przez szablony. Klucz pochodzi z szablonu, a sufiksy to nazwy
+// encji w Home Assistant (pierwszy jest domyślny, kolejne służą do
+// automatycznego dopasowania z wklejonej listy encji).
+const DASH_ENCJE = [
+  { klucz: "sensor.informacje_o_uczniu", nazwa: "Informacje o uczniu" },
+  { klucz: "sensor.szczesliwy_numerek", nazwa: "Szczęśliwy numerek" },
+  { klucz: "sensor.srednia_ocen", nazwa: "Średnia ocen" },
+  { klucz: "sensor.oceny", nazwa: "Oceny" },
+  { klucz: "sensor.frekwencja", nazwa: "Frekwencja" },
+  { klucz: "sensor.terminarz", nazwa: "Terminarz" },
+  { klucz: "sensor.plan_lekcji", nazwa: "Plan lekcji" },
+  { klucz: "sensor.tematy_lekcji", nazwa: "Tematy lekcji" },
+  { klucz: "sensor.wiadomosci", nazwa: "Wiadomości" },
+  { klucz: "sensor.ogloszenia", nazwa: "Ogłoszenia" },
+  { klucz: "sensor.zachowanie", nazwa: "Zachowanie" },
+  { klucz: "sensor.uwagi_o_zachowaniu", nazwa: "Uwagi", sufiksy: ["uwagi", "uwagi_o_zachowaniu"] },
+  { klucz: "sensor.podsumowanie_ai_rodzic", nazwa: "Podsumowanie AI (rodzic)" },
+  { klucz: "sensor.podsumowanie_ai_uczen", nazwa: "Podsumowanie AI (uczeń)" },
+  { klucz: "sensor.podsumowanie_wiadomosci_ai_rodzic", nazwa: "Podsumowanie wiadomości AI (rodzic)" },
+  { klucz: "binary_sensor.obowiazki_szkolne_nauka", nazwa: "Obowiązki szkolne (nauka)", sufiksy: ["obowiazki_szkolne_nauka", "nauka_odrobiona"] },
+  { klucz: "todo.zadania_domowe_to_do", nazwa: "Lista: zadania domowe" },
+  { klucz: "todo.przygotowanie_do_lekcji_to_do", nazwa: "Lista: przygotowanie do lekcji" },
+  { klucz: "calendar.plan_lekcji_kalendarz", nazwa: "Kalendarz: plan lekcji" },
+  { klucz: "calendar.terminarz_kalendarz", nazwa: "Kalendarz: terminarz" },
+  { klucz: "button.odswiez_dane", nazwa: "Przycisk: odśwież dane" },
+  { klucz: "button.generuj_podsumowanie_ai", nazwa: "Przycisk: raport AI" },
+  { klucz: "button.generuj_podsumowanie_wiadomosci_ai", nazwa: "Przycisk: podsumowanie wiadomości AI" },
+];
+
+const DASH_PALETY = [
+  { id: "indygo", nazwa: "Indygo", acc: "#3f51b5", c1: "#3949ab", c2: "#1e88e5" },
+  { id: "morski", nazwa: "Morski", acc: "#00897b", c1: "#00897b", c2: "#43a047" },
+  { id: "fiolet", nazwa: "Fiolet", acc: "#8e24aa", c1: "#8e24aa", c2: "#d81b60" },
+  { id: "zachod", nazwa: "Zachód słońca", acc: "#ef6c00", c1: "#e65100", c2: "#ff8f00" },
+  { id: "malina", nazwa: "Malina", acc: "#d81b60", c1: "#ad1457", c2: "#ec407a" },
+  { id: "grafit", nazwa: "Grafit", acc: "#546e7a", c1: "#37474f", c2: "#607d8b" },
+];
+
+const DASH_EMOJI = ["🧑‍🎓", "👦", "👧", "🧒", "👨‍🎓", "👩‍🎓"];
+
+const DASH_KARTY_HACS = {
+  "button-card": { nazwa: "button-card", url: "https://github.com/custom-cards/button-card" },
+  "mushroom": { nazwa: "Mushroom", url: "https://github.com/piitaya/lovelace-mushroom" },
+  "apexcharts-card": { nazwa: "ApexCharts Card", url: "https://github.com/RomRider/apexcharts-card" },
+  "card-mod": { nazwa: "card-mod", url: "https://github.com/thomasloven/lovelace-card-mod", opcjonalna: true },
+};
+
+function dashSzablony() {
+  if (!window.LIBRUS_DASH_TEMPLATES) throw new Error("Brak szablonów dashboardu (dashboard-templates.js)");
+  return window.LIBRUS_DASH_TEMPLATES;
 }
 
-function terminarzTpl(p, days, onlyTests = false) {
-  const flt = onlyTests ? "{% if 'sprawdzian' in t or 'klasówka' in t or 'kartk' in t %}" : "{% if true %}";
-  return `{% set zd = state_attr('sensor.${p}_terminarz','zdarzenia') or [] %}
-{% set ns = namespace(n=0) %}
-{% for z in zd | rejectattr('tytul','search','^(Nauczyciel:|Zastępstwo)') | sort(attribute='data') if z.get('rodzaj', '') not in ['nieobecnosc_nauczyciela','zastepstwo','przesuniecie','odwolanie'] %}{% set dd = (strptime(z.data,'%Y-%m-%d').date() - now().date()).days %}{% set t = z.tytul | lower %}{% if 0 <= dd <= ${days} %}${flt}{% set ns.n = ns.n + 1 %}{% set opis = z.szczegoly.Opis if z.szczegoly is mapping and z.szczegoly.Opis is defined and z.szczegoly.Opis != 'unknown' else '' %}
-{{ {'sprawdzian':'🔴','kartkowka':'🟠','dzien_wolny':'🏖️','wydarzenie':'🔵'}.get(z.get('rodzaj', '')) or ('🔴' if 'sprawdzian' in t or 'klasówka' in t else ('🟠' if 'kartk' in t else ('🔵' if 'wydarzenie' in t else '📅'))) }} **{{ z.tydzien[:3] | lower }} {{ z.data[8:10] }}.{{ z.data[5:7] }}** <small>{{ 'dziś' if dd == 0 else ('jutro' if dd == 1 else 'za ' ~ dd ~ ' dni') }}</small> · **{{ z.przedmiot if z.przedmiot and z.przedmiot != 'unknown' else '' }}** {{ z.tytul }}{% if opis %}<br><small>{{ opis | replace('\\n', ' ') | truncate(120) }}</small>{% endif %}
-{% endif %}{% endif %}{% endfor %}{% if ns.n == 0 %}Nic w ciągu ${days} dni ✅{% endif %}`;
+// Sekcje z elementami do wyboru w kreatorze (bez treści kart)
+function dashKatalog() {
+  return dashSzablony().sekcje.map(s => ({
+    nazwa: s.nazwa,
+    elementy: s.grupy.flatMap(g => g.elementy.map(e => ({ id: e.id, nazwa: e.nazwa, opis: e.opis, wymaga: e.wymaga }))),
+  }));
 }
 
-function ostatnieOcenyTpl(p, n = 6) {
-  return `{% set o = state_attr('sensor.${p}_oceny','oceny_wg_przedmiotu') or {} %}
-{% set ns = namespace(l=[]) %}
-{% for prz, lst in o.items() %}{% for g in lst %}{% set ns.l = ns.l + [{'p': prz, 'o': g.ocena, 'd': g.data, 'k': g.kategoria, 'n': g.jest_nowa, 'op': g.get('opis', '')}] %}{% endfor %}{% endfor %}
-${KOL}
-{% for g in (ns.l | sort(attribute='d', reverse=true))[:${n}] %}<font color="{{ kol.get(g.o[:1], '#9e9e9e') }}"><b>{{ g.o }}</b></font> **{{ g.p }}**{% if g.op %} – {{ g.op }}{% endif %} <small>{{ g.k }} · {{ g.d[8:10] }}.{{ g.d[5:7] }}</small>{{ ' 🆕' if g.n }}<br>
-{% else %}Brak ocen w tym semestrze.{% endfor %}`;
+function dashDomyslnaEncja(klucz, fullName) {
+  const def = DASH_ENCJE.find(e => e.klucz === klucz);
+  const [domena, sufiksSzablonu] = klucz.split(".");
+  const sufiks = def && def.sufiksy ? def.sufiksy[0] : sufiksSzablonu;
+  return `${domena}.${slugifyEntity(fullName)}_${sufiks}`;
 }
 
-function tabelaOcenTpl(p) {
-  return `{% set o = state_attr('sensor.${p}_oceny','oceny_wg_przedmiotu') or {} %}{% set sr = state_attr('sensor.${p}_srednia_ocen','srednie_wg_przedmiotow') or {} %}
-${KOL}
-| Przedmiot | Oceny | Średnia |
-|:---|:---|---:|
-{% for prz in o.keys() | sort %}{% set s = sr.get(prz) %}| **{{ prz }}** | {% for g in o[prz] %}<font color="{{ kol.get(g.ocena[:1], '#9e9e9e') }}"><b>{{ g.ocena }}</b></font>{% if g.get('opis') %}<small> ({{ g.opis }})</small>{% endif %}{{ ' ' }}{% endfor %}| {% if s is number %}<font color="{{ '#43a047' if s >= 4.5 else ('#7cb342' if s >= 3.75 else ('#f9a825' if s >= 2.75 else '#c62828')) }}"><b>{{ '%.2f' | format(s) }}</b></font>{% else %}–{% endif %} |
-{% endfor %}`;
+function dashDomyslneEncje(fullName) {
+  const wynik = {};
+  DASH_ENCJE.forEach(e => { wynik[e.klucz] = dashDomyslnaEncja(e.klucz, fullName); });
+  return wynik;
 }
 
-function planTygodniaTpl(p) {
-  return `{% set dni = state_attr('sensor.${p}_plan_lekcji', 'kolejne_7_dni') or [] %}
-{% for d in dni if d.lekcje | length > 0 %}
-#### {{ d.dzien_tygodnia }} {{ d.data[8:10] }}.{{ d.data[5:7] }} <small>· {{ d.lekcje[0].godzina_od }}–{{ d.lekcje[-1].godzina_do }}</small>
-{% for l in d.lekcje %}{% set ev = (l.get('zdarzenie') or '') | lower %}\`{{ l.godzina_od }}\` {% if l.get('odwolana') %}~~{{ l.przedmiot }}~~ ❌{% elif l.get('zastepstwo') %}**{{ l.przedmiot }}** 🔄{% else %}{{ l.przedmiot }}{% endif %}{% if l.get('dzd') %} <small>*dodatkowe*</small>{% endif %}{% if 'sprawdzian' in ev %} 🔴{% elif 'kartk' in ev %} 🟠{% elif ev %} 🔵{% endif %} <small>{{ (l.get('sala') or '') | replace('s. ','') }}</small><br>
-{% endfor %}
-{% else %}Brak lekcji w najbliższym tygodniu.{% endfor %}`;
-}
-
-function tematyLekcjiTpl(p) {
-  return `{% set lekcje = state_attr('sensor.${p}_tematy_lekcji', 'lekcje') or [] %}
-{% for dzien, lista in lekcje | groupby('data') | reverse %}
-#### {{ lista[0].dzien_tygodnia }} {{ dzien[8:10] }}.{{ dzien[5:7] }}
-{% for l in lista %}\`{{ l.numer if l.numer is not none else '–' }}\` **{{ l.przedmiot }}**{% if l.zastepstwo %} 🔄 <small>{{ l.zastepca }}</small>{% endif %}{% if l.obecnosc in ['nb', 'u', 'sp', 'zw'] %} ❗**{{ l.obecnosc }}**{% endif %} – {{ l.temat | replace('\\n', ' ') }}<br>
-{% endfor %}
-{% else %}Brak zrealizowanych lekcji w ostatnich 7 dniach.{% endfor %}`;
-}
-
-function wiadomosciTpl(p) {
-  return `{% set m = state_attr('sensor.${p}_wiadomosci','wiadomosci') or [] %}
-{% for x in m if x.temat and x.temat != 'Brak' %}{{ '🔴' if x.nieprzeczytana else '⚪' }} **{{ x.temat | trim }}**{{ ' 📎' if x.ma_zalacznik }}<br><small>{{ x.nadawca.split(' (')[0] }} · {{ x.data[8:10] }}.{{ x.data[5:7] }} {{ x.data[11:16] }}</small>{% if x.tresc %}<details><summary>Treść</summary>{{ x.tresc }}</details>{% endif %}
-
-{% else %}Brak wiadomości.{% endfor %}`;
-}
-
-function ogloszeniaTpl(p) {
-  return `{% for a in state_attr('sensor.${p}_ogloszenia','lista_ogloszen') or [] %}<details><summary><b>{{ a.tytul }}</b> <small>· {{ a.data[8:10] }}.{{ a.data[5:7] }} · {{ a.nadawca }}</small></summary>
-
-{{ a.opis }}
-</details>
-{% else %}Brak ogłoszeń.{% endfor %}`;
-}
-
-function uwagiTpl(p) {
-  return `{% set u = state_attr('sensor.${p}_uwagi','lista_uwag') or [] %}{% set ik = {'Positive':'🟢','Negative':'🔴','Neutral':'⚪'} %}
-{% for x in u %}{{ ik.get(x.typ, '⚪') }} **{{ x.data[8:10] }}.{{ x.data[5:7] }}** <small>{{ x.kategoria }}{{ ' · ' ~ x.nauczyciel if x.nauczyciel }}</small><br>{{ x.tresc }}
-
-{% else %}Brak uwag ✅{% endfor %}`;
-}
-
-function aiWeeklyReportTpl(p) {
-  return `{% set encja = 'sensor.${p}_podsumowanie_ai_rodzic' %}
-{% set raport = state_attr(encja, 'pełny_tekst') %}
-{% if raport %}
-{{ raport }}
-{% else %}
-Asystent AI jeszcze nie przygotował raportu tygodniowego. Użyj przycisku poniżej, aby go wygenerować!
-{% endif %}`;
-}
-
-function aiMessagesReportTpl(p) {
-  return `{% set encja = 'sensor.${p}_podsumowanie_wiadomosci_ai_rodzic' %}
-{% set raport = state_attr(encja, 'pełny_tekst') %}
-{% if raport %}
-{{ raport }}
-{% else %}
-Brak nowego podsumowania wiadomości. Kliknij przycisk poniżej, aby przeanalizować skrzynkę!
-{% endif %}`;
-}
-
-// Generowanie widoku głównego dla ucznia
-function buildKidOverviewCards(p, name, icon, panelUrl, options) {
-  const s = `sensor.${p}_`;
-  const detailAction = {
-    action: "navigate",
-    navigation_path: `/${panelUrl}/${p.replace(/_/g, "-")}`
-  };
-
-  const cards = [
-    { type: "heading", heading: name, heading_style: "title", icon: icon },
-    {
-      type: "custom:mushroom-template-card",
-      primary: `{{ states('${s}informacje_o_uczniu') }}`,
-      secondary: `kl. {{ state_attr('${s}informacje_o_uczniu','klasa') }} · wych. {{ state_attr('${s}informacje_o_uczniu','wychowawca') }}`,
-      icon: "mdi:account-school",
-      icon_color: "blue",
-      color: "blue",
-      grid_options: { columns: 12 },
-      tap_action: detailAction
-    },
-    {
-      type: "custom:mushroom-template-card",
-      primary: `{{ states('${s}srednia_ocen') }}`,
-      secondary: "Średnia ocen",
-      icon: "mdi:chart-line",
-      icon_color: `{% set v = states('${s}srednia_ocen') | float(0) %}{{ 'green' if v >= 4.5 else ('light-green' if v >= 3.75 else ('amber' if v >= 2.75 else ('red' if v > 0 else 'grey'))) }}`,
-      color: `{% set v = states('${s}srednia_ocen') | float(0) %}{{ 'green' if v >= 4.5 else ('light-green' if v >= 3.75 else ('amber' if v >= 2.75 else ('red' if v > 0 else 'grey'))) }}`,
-      grid_options: { columns: 6 },
-      tap_action: detailAction
-    },
-    {
-      type: "custom:mushroom-template-card",
-      primary: `{{ states('${s}szczesliwy_numerek') }}`,
-      secondary: `{{ '🍀 To mój numer!' if states('${s}szczesliwy_numerek') | int(0) == state_attr('${s}informacje_o_uczniu','numer_w_klasie') | int(-1) else 'Szczęśliwy numerek (mój: ' ~ state_attr('${s}informacje_o_uczniu','numer_w_klasie') ~ ')' }}`,
-      icon: "mdi:clover",
-      icon_color: `{{ 'green' if states('${s}szczesliwy_numerek') | int(0) == state_attr('${s}informacje_o_uczniu','numer_w_klasie') | int(-1) else 'grey' }}`,
-      grid_options: { columns: 6 },
-      tap_action: { action: "none" }
-    },
-    {
-      type: "custom:mushroom-template-card",
-      primary: `{{ state_attr('${s}wiadomosci','liczba_nieprzeczytanych') | int(0) }}`,
-      secondary: "Nieprzeczytane wiadomości",
-      icon: "mdi:email",
-      icon_color: `{{ 'red' if state_attr('${s}wiadomosci','liczba_nieprzeczytanych') | int(0) > 0 else 'grey' }}`,
-      grid_options: { columns: 6 },
-      tap_action: detailAction
-    },
-    {
-      type: "custom:mushroom-template-card",
-      primary: `{{ states('todo.${p}_zadania_domowe_to_do') }}`,
-      secondary: "Zadania domowe",
-      icon: "mdi:notebook-edit",
-      icon_color: `{{ 'orange' if states('todo.${p}_zadania_domowe_to_do') | int(0) > 0 else 'grey' }}`,
-      grid_options: { columns: 6 },
-      tap_action: { action: "more-info", entity: `todo.${p}_zadania_domowe_to_do` }
+// Dopasuj identyfikatory encji ucznia z wklejonej listy (np. z Narzędzia deweloperskie → Stany).
+// Zwraca tylko znalezione klucze.
+function dashDopasujEncje(tekst, fullName) {
+  const lista = Array.from(new Set((tekst || "").toLowerCase().match(/\b[a-z_]+\.[a-z0-9_]+\b/g) || []));
+  const slug = slugifyEntity(fullName);
+  const wynik = {};
+  DASH_ENCJE.forEach(e => {
+    const [domena, sufiksSzablonu] = e.klucz.split(".");
+    const sufiksy = e.sufiksy || [sufiksSzablonu];
+    for (const sufiks of sufiksy) {
+      // Dowolny prefiks przed "librus_<uczen>_" (np. po zmianie nazwy urządzenia w HA)
+      const wzor = new RegExp(`^${domena}\\.(?:[a-z0-9_]+_)?${slug}_${sufiks}$`);
+      const trafienie = lista.find(id => wzor.test(id));
+      if (trafienie) { wynik[e.klucz] = trafienie; break; }
     }
-  ];
-
-  if (options.enableStudyTodo) {
-    cards.push({
-      type: "custom:mushroom-template-card",
-      primary: `{{ 'Sprawdziany odrobione 🎉' if is_state('binary_sensor.${p}_nauka_odrobiona', 'on') else 'Nauka do zaliczenia ⚠️' }}`,
-      secondary: "Wyzwania do sprawdzianów",
-      icon: "mdi:gamepad-variant",
-      icon_color: `{{ 'green' if is_state('binary_sensor.${p}_nauka_odrobiona', 'on') else 'amber' }}`,
-      grid_options: { columns: 12 },
-      tap_action: { action: "more-info", entity: `todo.${p}_przygotowanie_do_lekcji_to_do` }
-    });
-  }
-
-  if (options.enableUwagi) {
-    cards.push({
-      type: "custom:mushroom-template-card",
-      primary: `{{ states('${s}uwagi') }}`,
-      secondary: `Uwagi ze szkoły`,
-      icon: "mdi:account-alert",
-      icon_color: `{% set u = state_attr('${s}uwagi','lista_uwag') or [] %}{% set neg = u | selectattr('typ','eq','Negative') | list %}{{ 'red' if neg else ('green' if u | selectattr('typ','eq','Positive') | list else 'grey') }}`,
-      grid_options: { columns: 6 },
-      tap_action: detailAction
-    });
-  }
-
-  cards.push({
-    type: "custom:mushroom-template-card",
-    primary: `{{ state_attr('${s}frekwencja','frekwencja_procent') | default('–', true) }}%`,
-    secondary: `Frekwencja semestralna`,
-    icon: "mdi:account-check",
-    icon_color: `{% set v = state_attr('${s}frekwencja','frekwencja_procent') %}{{ 'grey' if v is none else ('green' if v >= 95 else ('amber' if v >= 85 else 'red')) }}`,
-    grid_options: { columns: 6 },
-    tap_action: detailAction
   });
-
-  if (options.enableAi) {
-    cards.push({
-      type: "custom:mushroom-template-card",
-      primary: `🤖 Raport AI Tygodnia`,
-      secondary: `{{ states('sensor.${p}_podsumowanie_ai_rodzic') | truncate(60) }}`,
-      icon: "mdi:robot",
-      icon_color: "deep-purple",
-      grid_options: { columns: 12 },
-      tap_action: detailAction
-    });
-  }
-
-  cards.push(
-    { type: "heading", heading: "Plan lekcji", icon: "mdi:timetable", heading_style: "subtitle" },
-    { type: "markdown", content: planNextTpl(p) },
-    { type: "heading", heading: "Najbliższe 14 dni", icon: "mdi:calendar-alert", heading_style: "subtitle" },
-    { type: "markdown", content: terminarzTpl(p, 14) },
-    { type: "heading", heading: "Ostatnie oceny", icon: "mdi:star-circle", heading_style: "subtitle" },
-    { type: "markdown", content: ostatnieOcenyTpl(p) },
-    {
-      type: "button",
-      name: "Wszystkie szczegóły ucznia",
-      icon: "mdi:arrow-right-circle",
-      show_state: false,
-      tap_action: detailAction,
-      grid_options: { columns: 12, rows: 1 },
-      icon_height: "24px"
-    }
-  );
-
-  return { type: "grid", cards: cards };
+  return wynik;
 }
 
-// Generowanie podwidoku szczegółowego dla ucznia
-function buildKidSubView(p, name, icon, panelUrl, options) {
-  const s = `sensor.${p}_`;
+// Podstaw dane ucznia w szablonie (obiekt karty lub sekcji)
+function dashPodstaw(obj, uczen) {
+  const T = dashSzablony();
+  const esc = v => JSON.stringify(String(v)).slice(1, -1);
+  const paleta = uczen.paleta || DASH_PALETY[0];
+  const cel = Number(String(uczen.cel || "").replace(",", "."));
+  let s = JSON.stringify(obj);
+  s = s.replace(/__HELPER_(\d+)__/g, (_, i) => esc(T.helpery[Number(i)]));
+  s = s.replace(/__E\[([a-z_]+\.[a-z0-9_]+)\]__/g, (_, klucz) =>
+    esc((uczen.encje && uczen.encje[klucz]) || dashDomyslnaEncja(klucz, uczen.fullName)));
+  s = s.replace(/__IMIE__/g, () => esc(uczen.shortName || getShortName(uczen.fullName)))
+    .replace(/__EMOJI__/g, () => esc(uczen.emoji || DASH_EMOJI[0]))
+    .replace(/__ACC__/g, paleta.acc)
+    .replace(/__C1__/g, paleta.c1)
+    .replace(/__C2__/g, paleta.c2)
+    .replace(/__GOAL__/g, String(cel > 0 && cel <= 6 ? cel : 4.75));
+  return JSON.parse(s);
+}
 
-  const sections = [
-    {
-      type: "grid",
-      column_span: 3,
-      cards: [
-        { type: "heading", heading: "Kalendarz i Harmonogram", heading_style: "title", icon: "mdi:calendar" },
-        {
-          type: "calendar",
-          initial_view: "dayGridMonth",
-          grid_options: { columns: 36, rows: 8 },
-          entities: [`calendar.${p}_terminarz_kalendarz`, `calendar.${p}_plan_lekcji_kalendarz`]
-        }
-      ]
-    },
-    {
-      type: "grid",
-      cards: [
-        { type: "heading", heading: "Oceny i Wyniki", heading_style: "title", icon: "mdi:star-circle" },
-        {
-          type: "gauge",
-          entity: `${s}srednia_ocen`,
-          name: "Średnia",
-          min: 1,
-          max: 6,
-          needle: true,
-          severity: { red: 1, yellow: 2.75, green: 4.5 },
-          grid_options: { columns: 6, rows: 3 }
-        },
-        {
-          type: "tile",
-          entity: `${s}frekwencja`,
-          name: "Nieobecności",
-          icon: "mdi:account-cancel",
-          grid_options: { columns: 6, rows: 1 }
-        },
-        {
-          type: "markdown",
-          content: `Frekwencja: **{{ state_attr('${s}frekwencja','frekwencja_procent') | default('–', true) }}%**<br>Spóźnienia: **{{ state_attr('${s}frekwencja','liczba_spoznien') | int(0) }}** · nb: **{{ state_attr('${s}frekwencja','liczba_nieusprawiedliwionych') | int(0) }}** · u: **{{ state_attr('${s}frekwencja','liczba_usprawiedliwionych') | int(0) }}**`,
-          grid_options: { columns: 6, rows: 2 }
-        },
-        { type: "markdown", content: tabelaOcenTpl(p) },
-        {
-          type: "history-graph",
-          title: "Średnia w czasie",
-          hours_to_show: 720,
-          entities: [{ entity: `${s}srednia_ocen`, name: "Średnia" }]
-        },
-        { type: "heading", heading: "Zadania domowe", heading_style: "title", icon: "mdi:notebook-edit" },
-        { type: "todo-list", entity: `todo.${p}_zadania_domowe_to_do`, hide_create: true },
-        { type: "heading", heading: "Wiadomości", icon: "mdi:email", heading_style: "subtitle" },
-        { type: "markdown", content: wiadomosciTpl(p) },
-        { type: "heading", heading: "Ogłoszenia", icon: "mdi:bullhorn", heading_style: "subtitle" },
-        { type: "markdown", content: ogloszeniaTpl(p) },
-        {
-          type: "tile",
-          entity: `button.${p}_odswiez_dane`,
-          name: "Odśwież dane z Librusa",
-          icon: "mdi:refresh",
-          tap_action: {
-            action: "perform-action",
-            perform_action: "button.press",
-            target: { entity_id: `button.${p}_odswiez_dane` }
-          }
-        }
-      ]
-    }
-  ];
-
-  const col2Cards = [];
-  if (options.enableAi) {
-    col2Cards.push(
-      { type: "heading", heading: "Raporty Sztucznej Inteligencji", heading_style: "title", icon: "mdi:robot" },
-      {
-        type: "custom:stack-in-card",
-        cards: [
-          { type: "custom:mushroom-title-card", title: "🤖 Raport Tygodniowy (AI)", subtitle: "Podsumowanie postępów dla rodzica" },
-          { type: "markdown", content: aiWeeklyReportTpl(p) },
-          {
-            type: "button",
-            entity: `button.${p}_generuj_podsumowanie_ai`,
-            name: "Generuj nowy raport",
-            icon: "mdi:robot-excited",
-            tap_action: { action: "toggle" }
-          }
-        ]
-      },
-      {
-        type: "custom:stack-in-card",
-        cards: [
-          { type: "custom:mushroom-title-card", title: "📬 Podsumowanie Wiadomości (AI)", subtitle: "Zestawienie komunikatów szkolnych" },
-          { type: "markdown", content: aiMessagesReportTpl(p) },
-          {
-            type: "button",
-            entity: `button.${p}_generuj_podsumowanie_wiadomosci_ai`,
-            name: "Przeanalizuj wiadomości",
-            icon: "mdi:message-processing",
-            tap_action: { action: "toggle" }
-          }
-        ]
-      }
-    );
-  }
-
-  if (options.enableStudyTodo) {
-    col2Cards.push(
-      { type: "heading", heading: "Przygotowanie do lekcji (To-Do)", heading_style: "title", icon: "mdi:book-open-variant" },
-      { type: "todo-list", entity: `todo.${p}_przygotowanie_do_lekcji_to_do`, hide_create: true }
-    );
-  }
-
-  if (options.enableUwagi) {
-    col2Cards.push(
-      { type: "heading", heading: "Uwagi o zachowaniu", heading_style: "title", icon: "mdi:account-alert" },
-      { type: "markdown", content: uwagiTpl(p) }
-    );
-  }
-
-  col2Cards.push(
-    { type: "heading", heading: "Tematy lekcji (7 dni)", heading_style: "title", icon: "mdi:book-open-page-variant" },
-    { type: "markdown", content: tematyLekcjiTpl(p) }
-  );
-
-  sections.push({ type: "grid", cards: col2Cards });
-
-  sections.push({
-    type: "grid",
-    cards: [
-      { type: "heading", heading: "Sprawdziany i terminarz", heading_style: "title", icon: "mdi:calendar-alert" },
-      { type: "markdown", content: terminarzTpl(p, 60) },
-      { type: "heading", heading: "Plan na cały tydzień", heading_style: "title", icon: "mdi:timetable" },
-      { type: "markdown", content: planTygodniaTpl(p) }
-    ]
+// Sekcje widoku jednego ucznia z wybranymi elementami
+function dashSekcjeUcznia(uczen, wybrane) {
+  const sekcje = [];
+  dashSzablony().sekcje.forEach(s => {
+    const karty = [];
+    s.grupy.forEach(g => {
+      const elementy = g.elementy.filter(e => wybrane.has(e.id));
+      if (!elementy.length) return;
+      if (g.naglowek) karty.push(g.naglowek);
+      elementy.forEach(e => karty.push(e.karta));
+    });
+    if (!karty.length) return;
+    if (s.tytul) karty.unshift(s.tytul);
+    sekcje.push(dashPodstaw(Object.assign({}, s.sekcja, { cards: karty }), uczen));
   });
+  return sekcje;
+}
 
+// Cały widok typu "sections" dla wszystkich uczniów
+function generateDashboardView(uczniowie, wybrane, opcje = {}) {
+  const zbior = new Set(wybrane);
   return {
     type: "sections",
     max_columns: 3,
-    title: `Librus · ${name}`,
-    path: p.replace(/_/g, "-"),
-    icon: icon,
-    subview: true,
-    back_path: `/${panelUrl}/szkola`,
-    sections: sections
-  };
-}
-
-// Główna funkcja budująca obiekt Dashboardu
-function generateDashboardConfig(students, panelUrl, options) {
-  const studentData = students.map(s => {
-    const fullName = s.fullName.trim();
-    const shortName = s.shortName && s.shortName.trim() ? s.shortName.trim() : getShortName(fullName);
-    const slug = slugifyEntity(fullName);
-    const icon = s.icon || detectGenderIcon(shortName);
-    return { fullName, shortName, slug, icon };
-  });
-
-  const overviewView = {
-    type: "sections",
-    max_columns: 3,
-    title: "Szkoła",
-    path: "szkola",
+    title: opcje.tytul || "Szkoła",
+    path: opcje.sciezka || "szkola-librus",
     icon: "mdi:school",
-    header: {
-      card: {
-        type: "markdown",
-        text_only: true,
-        content: "# 🎒 Szkoła\n{% set d = ['poniedziałek','wtorek','środa','czwartek','piątek','sobota','niedziela'] %}{{ d[now().weekday()] | capitalize }}, {{ now().strftime('%d.%m.%Y') }}"
-      }
-    },
-    sections: studentData.map(st => buildKidOverviewCards(st.slug, st.shortName, st.icon, panelUrl, options))
+    dense_section_placement: false,
+    sections: uczniowie.flatMap(u => dashSekcjeUcznia(u, zbior)),
   };
+}
 
-  const subViews = studentData.map(st => buildKidSubView(st.slug, st.shortName, st.icon, panelUrl, options));
+// Każdy wybrany element osobno (do wklejenia jako pojedyncza karta)
+function generateDashboardElements(uczniowie, wybrane) {
+  const zbior = new Set(wybrane);
+  const wynik = [];
+  uczniowie.forEach(u => {
+    dashSzablony().sekcje.forEach(s => {
+      s.grupy.forEach(g => g.elementy.forEach(e => {
+        if (!zbior.has(e.id)) return;
+        wynik.push({
+          uczen: u.shortName || getShortName(u.fullName),
+          sekcja: s.nazwa,
+          id: e.id,
+          nazwa: e.nazwa,
+          wymaga: e.wymaga,
+          karta: dashPodstaw(e.karta, u),
+        });
+      }));
+    });
+  });
+  return wynik;
+}
 
-  return {
-    title: "Szkoła",
-    views: [overviewView, ...subViews]
-  };
+// Karty HACS potrzebne dla wybranych elementów
+function dashWymaganeKarty(wybrane) {
+  const zbior = new Set(wybrane);
+  const wymagane = new Set();
+  dashKatalog().forEach(s => s.elementy.forEach(e => {
+    if (zbior.has(e.id)) e.wymaga.forEach(w => wymagane.add(w));
+  }));
+  return Object.keys(DASH_KARTY_HACS).filter(k => wymagane.has(k)).map(k => Object.assign({ id: k }, DASH_KARTY_HACS[k]));
 }
 
 // Generator Automatyzacji Powiadomień YAML
@@ -673,64 +438,64 @@ Pisz prosto, bezpośrednio i zwięźle.`
 };
 
 // Konwerter obiektu JavaScript do czytelnego YAML-a
+// Zwykły tekst bez cudzysłowów tylko gdy YAML na pewno odczyta go jako tekst
+const YAML_ZWYKLY = /^[A-Za-z_À-ɏ][A-Za-z0-9_À-ɏ .\/()+-]*$/;
+const YAML_ZAREZERWOWANE = /^(true|false|yes|no|on|off|null|y|n)$/i;
+
+function yamlKlucz(k) {
+  return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(k) ? k : JSON.stringify(k);
+}
+
+function yamlTekst(s, indent) {
+  if (s.includes("\n")) {
+    // Blok dosłowny: |- bez końcowego \n, | z jednym, |+ z kilkoma
+    const koncowe = s.length - s.replace(/\n+$/, "").length;
+    const chomp = koncowe === 0 ? "-" : koncowe === 1 ? "" : "+";
+    const tresc = koncowe === 1 ? s.slice(0, -1) : s;
+    const linie = tresc.split("\n");
+    // Wskaźnik wcięcia, gdy pierwsza linia zaczyna się od spacji
+    const wskaznik = /^\s/.test(linie[0]) ? "2" : "";
+    const pad = "  ".repeat(indent);
+    return `|${wskaznik}${chomp}\n` + linie.map(l => (l.length ? pad + l : "")).join("\n");
+  }
+  if (s === "" || !YAML_ZWYKLY.test(s) || YAML_ZAREZERWOWANE.test(s) || s.endsWith(" ")) {
+    return JSON.stringify(s);
+  }
+  return s;
+}
+
 function toYaml(obj, indent = 0) {
   const pad = "  ".repeat(indent);
 
   if (obj === null || obj === undefined) return "null";
   if (typeof obj === "boolean") return obj ? "true" : "false";
   if (typeof obj === "number") return String(obj);
-
-  if (typeof obj === "string") {
-    if (obj.includes("\n")) {
-      const lines = obj.split("\n");
-      const blockPad = "  ".repeat(indent + 1);
-      return "|\n" + lines.map(line => line.length > 0 ? blockPad + line : "").join("\n");
-    }
-    if (/[:#{}[\],&*?|<>=!%@`]/.test(obj) || obj.trim() !== obj) {
-      return JSON.stringify(obj);
-    }
-    return obj;
-  }
+  if (typeof obj === "string") return yamlTekst(obj, indent);
 
   if (Array.isArray(obj)) {
     if (obj.length === 0) return "[]";
     return "\n" + obj.map(item => {
-      const itemPad = "  ".repeat(indent);
-      if (typeof item === "object" && item !== null && !Array.isArray(item)) {
-        const itemYaml = toYaml(item, indent + 1);
-        const trimmed = itemYaml.trimStart();
-        return `${itemPad}- ${trimmed}`;
+      if (typeof item === "object" && item !== null && !Array.isArray(item) && Object.keys(item).length) {
+        return `${pad}- ${toYaml(item, indent + 1).trimStart()}`;
       }
-      return `${itemPad}- ${toYaml(item, indent + 1)}`;
+      return `${pad}- ${toYaml(item, indent + 1)}`;
     }).join("\n");
   }
 
   if (typeof obj === "object") {
     const keys = Object.keys(obj);
     if (keys.length === 0) return "{}";
-    const lines = [];
-    for (const key of keys) {
+    return keys.map(key => {
       const val = obj[key];
-      if (typeof val === "object" && val !== null) {
-        if (Array.isArray(val)) {
-          if (val.length === 0) {
-            lines.push(`${pad}${key}: []`);
-          } else {
-            lines.push(`${pad}${key}:${toYaml(val, indent + 1)}`);
-          }
-        } else {
-          lines.push(`${pad}${key}:\n${toYaml(val, indent + 1)}`);
-        }
-      } else {
-        const valStr = toYaml(val, indent + 1);
-        if (valStr.startsWith("|\n")) {
-          lines.push(`${pad}${key}: ${valStr}`);
-        } else {
-          lines.push(`${pad}${key}: ${valStr}`);
-        }
+      const k = yamlKlucz(key);
+      if (Array.isArray(val)) {
+        return val.length ? `${pad}${k}:${toYaml(val, indent + 1)}` : `${pad}${k}: []`;
       }
-    }
-    return lines.join("\n");
+      if (typeof val === "object" && val !== null) {
+        return Object.keys(val).length ? `${pad}${k}:\n${toYaml(val, indent + 1)}` : `${pad}${k}: {}`;
+      }
+      return `${pad}${k}: ${toYaml(val, indent + 1)}`;
+    }).join("\n");
   }
 
   return String(obj);
@@ -741,7 +506,15 @@ window.LibrusGenerator = {
   slugifyEntity,
   getShortName,
   detectGenderIcon,
-  generateDashboardConfig,
+  DASH_ENCJE,
+  DASH_PALETY,
+  DASH_EMOJI,
+  dashKatalog,
+  dashDomyslneEncje,
+  dashDopasujEncje,
+  dashWymaganeKarty,
+  generateDashboardView,
+  generateDashboardElements,
   generateAutomationsYaml,
   PROMPT_PRESETS,
   toYaml
