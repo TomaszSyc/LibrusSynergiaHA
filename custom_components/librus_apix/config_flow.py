@@ -9,7 +9,6 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
-
 from . import nowy_klient
 from .const import (
     CONF_SCAN_INTERVAL_OTHER,
