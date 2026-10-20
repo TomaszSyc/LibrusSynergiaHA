@@ -820,6 +820,11 @@ MIT License - patrz [LICENSE](LICENSE)
 
 ## 📝 Historia Zmian
 
+### v3.0.3
+- 📅 **Prawidłowy stan „on” w kalendarzach (PR #47, Issue #46)**: Poprawiono właściwość `event` w encjach `plan_lekcji_kalendarz` oraz `terminarz_kalendarz` – encje kalendarza prawidłowo przyjmują stan `on` podczas trwania bieżących lekcji lub sprawdzianów (dzięki **@morbiasz** i **@PePeLLee**).
+- 🎯 **Inteligentne dopasowanie sprawdzianów do planu**: Wyeliminowano błędne przypisywanie sprawdzianu do innej lekcji w przypadku pomyłki nauczyciela w numerze lekcji w Librusie – sprawdziany i kartkówki mają nadrzędny priorytet dopasowania po przedmiocie i nauczycielu.
+- ⏱️ **Korekta numeru lekcji i godzin w terminarzu**: Przy skorygowaniu przypisania sprawdzianu, encja `terminarz` automatycznie aktualizuje `numer_lekcji` i godzinę, zapewniając spójność kart na dashboardzie i kalendarza.
+
 ### v3.0.2
 - 👶 **Izolacja ciasteczek i tokenów wielu kont (PR #45)**: Naprawiono współdzielenie słoika ciasteczek w `librus-apix 1.5.3`. U rodziców z kilkoma uczniami w jednej instancji HA uwagi, frekwencja oraz zajęcia dodatkowe nie przeskakują już pomiędzy kontami dzieci (dzięki **@morbiasz**).
 - 🛡️ **Dostępność encji podczas problemów z logowaniem**: W przypadku chwilowej awarii portalu Librus lub błędu autoryzacji encje nie przechodzą w stan niedostępny (`unavailable`), lecz zachowują ostatnie znane dane na dashboardach na czas trwania awarii.
