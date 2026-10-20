@@ -197,25 +197,40 @@ class LibrusScheduleCalendar(CoordinatorEntity, CalendarEntity):
                 dt_end = dt_start + timedelta(days=1)
                 is_all_day = True
                 
-                numer_lekcji = ev.get("numer_lekcji")
-                if numer_lekcji and numer_lekcji != "unknown":
-                    # Szukamy godziny lekcji w planie
-                    for day in plan:
-                        if day.get("data") == ev_data:
-                            for lekcja in day.get("lekcje", []):
-                                if str(lekcja.get("numer")) == str(numer_lekcji):
-                                    godzina_od = lekcja.get("godzina_od")
-                                    godzina_do = lekcja.get("godzina_do")
-                                    if godzina_od and godzina_do and "??" not in godzina_od and "??" not in godzina_do:
-                                        dt_start = datetime.strptime(f"{ev_data} {godzina_od}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
-                                        dt_end = datetime.strptime(f"{ev_data} {godzina_do}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
-                                        is_all_day = False
-                                    break
-                            break
-                
                 przedmiot = ev.get("przedmiot", "")
                 tytul = ev.get("tytul", "")
                 szczegoly = ev.get("szczegoly", "")
+                numer_lekcji = ev.get("numer_lekcji")
+
+                # Szukamy powiazanej lekcji w planie, aby pobrac dokladne godziny:
+                # 1. Po przypisanym zdarzeniu i nazwie przedmiotu (najpewniejsze)
+                # 2. Po numerze lekcji
+                dopasowana_lekcja = None
+                for day in plan:
+                    if day.get("data") == ev_data:
+                        lekcje_dnia = day.get("lekcje", [])
+                        if tytul and przedmiot:
+                            p_lower = przedmiot.strip().lower()
+                            for lk in lekcje_dnia:
+                                if lk.get("zdarzenie") == tytul and lk.get("przedmiot"):
+                                    l_lower = lk["przedmiot"].strip().lower()
+                                    if p_lower in l_lower or l_lower in p_lower:
+                                        dopasowana_lekcja = lk
+                                        break
+                        if not dopasowana_lekcja and numer_lekcji and numer_lekcji != "unknown":
+                            for lk in lekcje_dnia:
+                                if str(lk.get("numer")) == str(numer_lekcji):
+                                    dopasowana_lekcja = lk
+                                    break
+                        break
+
+                if dopasowana_lekcja:
+                    godzina_od = dopasowana_lekcja.get("godzina_od")
+                    godzina_do = dopasowana_lekcja.get("godzina_do")
+                    if godzina_od and godzina_do and "??" not in godzina_od and "??" not in godzina_do:
+                        dt_start = datetime.strptime(f"{ev_data} {godzina_od}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
+                        dt_end = datetime.strptime(f"{ev_data} {godzina_do}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
+                        is_all_day = False
                 
                 summary = f"[{przedmiot}] {tytul}" if przedmiot else tytul
                 

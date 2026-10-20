@@ -24,6 +24,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL_OTHER,
     DEFAULT_SCAN_INTERVAL_SCHOOL,
     DOMAIN,
+    is_exam_event,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -517,6 +518,19 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                         ev_title = t_ev.get("tytul")
                         ev_subject = t_ev.get("przedmiot")
                         ev_num = t_ev.get("numer_lekcji")
+                        ev_rodzaj = (t_ev.get("rodzaj") or "").lower()
+                        is_exam = is_exam_event(t_ev)
+                        is_substitution = (
+                            ev_rodzaj == "zastepstwo"
+                            or "zastępstwo" in (ev_title or "").lower()
+                            or "zastepstwo" in (ev_title or "").lower()
+                            or " na lekcji nr" in (ev_title or "").lower()
+                        )
+                        ev_teacher = None
+                        if isinstance(t_ev.get("szczegoly"), dict):
+                            raw_teacher = t_ev["szczegoly"].get("Nauczyciel")
+                            if raw_teacher and str(raw_teacher).strip().lower() != "unknown":
+                                ev_teacher = str(raw_teacher).strip()
                         
                         if not ev_date or not ev_title:
                             continue
@@ -528,25 +542,75 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                             if day.get("data") != ev_date:
                                 continue
                                 
+                            day_lessons = day.get("lekcje", [])
+                            # Sprawdz, czy w danym dniu uczen ma przedmiot odpowiadajacy zdarzeniu
+                            day_has_matching_subject = False
+                            if ev_subject:
+                                ev_s_lower = ev_subject.strip().lower()
+                                day_has_matching_subject = any(
+                                    lek.get("przedmiot") and (
+                                        ev_s_lower in lek["przedmiot"].strip().lower()
+                                        or lek["przedmiot"].strip().lower() in ev_s_lower
+                                    )
+                                    for lek in day_lessons
+                                )
+
                             scored_lekcje = []
                             max_score = 0
                             
-                            for lekcja in day.get("lekcje", []):
+                            for lekcja in day_lessons:
                                 score = 0
-                                
-                                # Dopasowanie po nazwie przedmiotu (WAGA: 2)
-                                if ev_subject and lekcja.get("przedmiot"):
-                                    if ev_subject.lower() in lekcja["przedmiot"].lower() or lekcja["przedmiot"].lower() in ev_subject.lower():
-                                        score += 2
-                                        
-                                # Dopasowanie po numerze lekcji (WAGA: 5 - priorytet dla zastępstw)
+                                lek_przedmiot = lekcja.get("przedmiot")
+                                subject_match = False
+                                if ev_subject and lek_przedmiot:
+                                    ev_s_lower = ev_subject.strip().lower()
+                                    lek_s_lower = lek_przedmiot.strip().lower()
+                                    if ev_s_lower in lek_s_lower or lek_s_lower in ev_s_lower:
+                                        subject_match = True
+
+                                number_match = False
                                 if ev_num and lekcja.get("numer"):
                                     try:
                                         # Terminarz moze zwrocic "4", "4-5"
                                         if str(lekcja["numer"]) in str(ev_num).split("-"):
-                                            score += 5
+                                            number_match = True
                                     except Exception as ex:
                                         _LOGGER.debug("Błąd podczas dopasowywania numeru lekcji ze zdarzenia: %s", ex)
+
+                                teacher_match = False
+                                lek_teacher = lekcja.get("nauczyciel")
+                                if ev_teacher and lek_teacher:
+                                    ev_t_lower = ev_teacher.lower()
+                                    lek_t_lower = str(lek_teacher).strip().lower()
+                                    if ev_t_lower in lek_t_lower or lek_t_lower in ev_t_lower:
+                                        teacher_match = True
+
+                                if is_substitution:
+                                    # Zastępstwa: priorytet ma numer lekcji (zastąpienie przedmiotu na danym slocie)
+                                    if number_match:
+                                        score += 10
+                                    if subject_match:
+                                        score += 2
+                                    if teacher_match:
+                                        score += 1
+                                else:
+                                    # Sprawdziany, kartkówki i inne wpisy przedmiotowe
+                                    if subject_match:
+                                        score += 10
+                                        if number_match:
+                                            score += 5
+                                        if teacher_match:
+                                            score += 3
+                                    elif not ev_subject:
+                                        # Wpis ogólny bez określonego przedmiotu
+                                        if number_match:
+                                            score += 5
+                                    elif not day_has_matching_subject and not is_exam:
+                                        # Jeśli w danym dniu przedmiotu w ogóle nie ma i to nie jest sprawdzian
+                                        if number_match:
+                                            score += 2
+                                    # Gdy to sprawdzian lub w planie jest właściwy przedmiot,
+                                    # NIE dopasowujemy sprawdzianu do innej lekcji (score pozostaje 0)
                                 
                                 if score > 0:
                                     scored_lekcje.append((score, lekcja))
@@ -555,15 +619,31 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                                     
                             # Przypisz zdarzenie tylko do lekcji z najwyzszym wynikiem
                             if max_score > 0:
-                                for score, lekcja in scored_lekcje:
-                                    if score == max_score:
-                                        lekcja["zdarzenie"] = ev_title
-                                        ev_opis = t_ev.get("szczegoly", {}).get("Opis")
-                                        if ev_opis and str(ev_opis).lower() != "unknown":
-                                            opis_str = str(ev_opis).strip()
-                                            if len(opis_str) > 100:
-                                                opis_str = opis_str[:97] + "..."
-                                            lekcja["zdarzenie_opis"] = opis_str
+                                best_lekcje = [lek for score, lek in scored_lekcje if score == max_score]
+                                for lekcja in best_lekcje:
+                                    lekcja["zdarzenie"] = ev_title
+                                    ev_opis = t_ev.get("szczegoly", {}).get("Opis")
+                                    if ev_opis and str(ev_opis).lower() != "unknown":
+                                        opis_str = str(ev_opis).strip()
+                                        if len(opis_str) > 100:
+                                            opis_str = opis_str[:97] + "..."
+                                        lekcja["zdarzenie_opis"] = opis_str
+
+                                # Jeśli dla sprawdzianu/kartkówki dopasowano lekcję z innym numerem, korygujemy numer w terminarzu
+                                first_best = best_lekcje[0]
+                                if is_exam and first_best.get("numer") is not None:
+                                    if str(t_ev.get("numer_lekcji")) != str(first_best["numer"]):
+                                        _LOGGER.debug(
+                                            "Skorygowano numer lekcji w terminarzu dla '%s' (%s): %s -> %s",
+                                            ev_title,
+                                            ev_subject,
+                                            t_ev.get("numer_lekcji"),
+                                            first_best["numer"],
+                                        )
+                                        t_ev["numer_lekcji"] = first_best["numer"]
+                                        godz_od = first_best.get("godzina_od")
+                                        if godz_od and "??" not in godz_od and t_ev.get("godzina") in ("unknown", "", None):
+                                            t_ev["godzina"] = godz_od
                             else:
                                 # Jesli nie dopasowano lekcji z planu, a terminarz ma numer lekcji (np. poprawa po lekcjach).
                                 # Nieobecnosc nauczyciela i dzien wolny nie sa zajeciami ucznia - nie dodajemy

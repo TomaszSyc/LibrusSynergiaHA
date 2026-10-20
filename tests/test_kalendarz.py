@@ -65,3 +65,30 @@ def test_encja_planu_lekcji_uzywa_biezacego_wydarzenia(monkeypatch):
 
     monkeypatch.setattr(kal, "datetime", _Teraz)
     assert encja.event is lekcja
+
+
+def test_kalendarz_terminarz_pobiera_godziny_ze_skojarzonej_lekcji():
+    coordinator = MagicMock()
+    coordinator.data = {
+        "terminarz": [{
+            "data": "2026-10-21",
+            "tytul": "Sprawdzian",
+            "przedmiot": "matematyka",
+            "numer_lekcji": 2,
+            "szczegoly": {"Opis": "Liczby i działania"},
+        }],
+        "plan_lekcji": [{
+            "data": "2026-10-21",
+            "lekcje": [
+                {"numer": 2, "przedmiot": "Historia", "godzina_od": "08:55", "godzina_do": "09:40", "zdarzenie": None},
+                {"numer": 4, "przedmiot": "Matematyka", "godzina_od": "10:45", "godzina_do": "11:30", "zdarzenie": "Sprawdzian"},
+            ],
+        }],
+    }
+    encja = kal.LibrusScheduleCalendar(coordinator, MagicMock(entry_id="x"))
+    events = encja._get_events()
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.summary == "[matematyka] Sprawdzian"
+    assert ev.start.strftime("%H:%M") == "10:45"
+    assert ev.end.strftime("%H:%M") == "11:30"

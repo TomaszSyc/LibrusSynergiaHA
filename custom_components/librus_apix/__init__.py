@@ -35,7 +35,7 @@ import librus_apix.schedule  # noqa: F401
 import librus_apix.student_information  # noqa: F401
 import librus_apix.timetable  # noqa: F401
 
-from .const import DOMAIN
+from .const import DOMAIN, is_exam_event
 from .sensor import LibrusDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -98,17 +98,6 @@ def _rodzaj_zdarzenia(tytul: str, href: str) -> str:
     if "kartkówka" in t or "kartkowka" in t:
         return "kartkowka"
     return "wydarzenie"
-
-
-def is_exam_event(event: dict) -> bool:
-    """Sprawdz czy wpis terminarza to sprawdzian / kartkowka / klasowka."""
-    if not isinstance(event, dict):
-        return False
-    rodzaj = (event.get("rodzaj") or "").lower()
-    if rodzaj in ("sprawdzian", "kartkowka"):
-        return True
-    t = (event.get("tytul") or "").lower()
-    return any(x in t for x in ("sprawdzian", "kartkówka", "kartkowka", "klasówka", "klasowka", "praca klasowa", "test"))
 
 
 def nowy_klient() -> Client:

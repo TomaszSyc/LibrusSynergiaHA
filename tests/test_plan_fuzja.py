@@ -167,3 +167,87 @@ async def test_pierwsze_zdarzenie_spoza_planu_nie_psuje_odswiezania(hass):
     lekcje = data["plan_lekcji"][0]["lekcje"]
     assert len(lekcje) == 1
     assert lekcje[0]["zdarzenie"] == "Sprawdzian"
+
+
+async def test_fuzja_sprawdzian_bledny_numer_lekcji_dopasowuje_do_wlasciwego_przedmiotu(hass):
+    """Błąd nauczyciela: wpisany numer lekcji 2 (Historia), ale sprawdzian jest z Matematyki (lekcja 4).
+
+    Sprawdzian ma trafić do Matematyki, Historia ma pozostać bez sprawdzianu,
+    a numer lekcji w terminarzu ma zostać skorygowany na 4.
+    """
+    lekcja1 = dict(_lekcja(1, "08:00", "08:45"), przedmiot="Język polski", nauczyciel="Małozięć Elżbieta")
+    lekcja2 = dict(_lekcja(2, "08:55", "09:40"), przedmiot="Historia", nauczyciel="Małozięć Elżbieta")
+    lekcja3 = dict(_lekcja(3, "09:50", "10:35"), przedmiot="Wychowanie fizyczne", nauczyciel="Krogulec Marek")
+    lekcja4 = dict(_lekcja(4, "10:45", "11:30"), przedmiot="Matematyka", nauczyciel="Pyra Beata")
+    lekcja5 = dict(_lekcja(5, "11:50", "12:35"), przedmiot="Geografia", nauczyciel="Piwowarek Justyna")
+
+    plan = [{
+        "dzien_tygodnia": "Środa",
+        "data": "2026-10-21",
+        "lekcje": [lekcja1, lekcja2, lekcja3, lekcja4, lekcja5],
+    }]
+    terminarz = [{
+        "data": "2026-10-21",
+        "tydzien": "Środa",
+        "tytul": "Sprawdzian",
+        "rodzaj": "sprawdzian",
+        "przedmiot": "matematyka",
+        "godzina": "unknown",
+        "numer_lekcji": 2,  # Błędny numer wpisany przez nauczyciela
+        "szczegoly": {
+            "Nauczyciel": "Pyra Beata",
+            "Opis": "Liczby i działania",
+            "Data dodania": "2026-10-15 11:07:54",
+        },
+        "href": "szczegoly/7452454",
+        "data_dodania": "",
+    }]
+
+    client = _klient_planu(plan, terminarz)
+    data = await LibrusDataUpdateCoordinator(hass, client)._async_update_data()
+    lekcje = data["plan_lekcji"][0]["lekcje"]
+
+    # Lekcja 2 (Historia) NIE MOŻE mieć sprawdzianu z matematyki
+    assert lekcje[1]["przedmiot"] == "Historia"
+    assert lekcje[1]["zdarzenie"] is None
+
+    # Lekcja 4 (Matematyka) otrzymuje sprawdzian
+    assert lekcje[3]["przedmiot"] == "Matematyka"
+    assert lekcje[3]["zdarzenie"] == "Sprawdzian"
+    assert lekcje[3]["zdarzenie_opis"] == "Liczby i działania"
+
+    # Wpis w terminarzu ma skorygowany numer lekcji i godzinę
+    term_wpis = data["terminarz"][0]
+    assert term_wpis["numer_lekcji"] == 4
+    assert term_wpis["godzina"] == "10:45"
+
+
+async def test_fuzja_zastepstwo_priorytet_numeru_lekcji(hass):
+    """Zastępstwo na lekcji nr 3: priorytet ma numer lekcji mimo innego przedmiotu."""
+    lekcja1 = dict(_lekcja(1, "08:00", "08:45"), przedmiot="Język polski")
+    lekcja2 = dict(_lekcja(2, "08:55", "09:40"), przedmiot="Historia")
+    lekcja3 = dict(_lekcja(3, "09:50", "10:35"), przedmiot="Godz dyrektorska")
+
+    plan = [{
+        "dzien_tygodnia": "Środa",
+        "data": "2026-10-21",
+        "lekcje": [lekcja1, lekcja2, lekcja3],
+    }]
+    terminarz = [{
+        "data": "2026-10-21",
+        "tydzien": "Środa",
+        "tytul": "Zastępstwo z Marek Krogulec na lekcji nr: 3 (wychowanie fizyczne)",
+        "rodzaj": "zastepstwo",
+        "przedmiot": "Zastępstwo z Marek Krogulec na lekcji nr: 3 (wychowanie fizyczne)",
+        "godzina": "unknown",
+        "numer_lekcji": 3,
+        "szczegoly": {"Opis": "Zastępstwo"},
+        "href": "",
+    }]
+
+    client = _klient_planu(plan, terminarz)
+    data = await LibrusDataUpdateCoordinator(hass, client)._async_update_data()
+    lekcje = data["plan_lekcji"][0]["lekcje"]
+
+    # Lekcja 3 otrzymała zdarzenie zastępstwa
+    assert lekcje[2]["zdarzenie"] == "Zastępstwo z Marek Krogulec na lekcji nr: 3 (wychowanie fizyczne)"

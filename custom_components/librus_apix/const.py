@@ -19,3 +19,14 @@ DEFAULT_SCAN_INTERVAL_OTHER = 120   # pozostale godziny i weekendy
 
 # Default values
 DEFAULT_MESSAGES_COUNT = 10
+
+
+def is_exam_event(event: dict) -> bool:
+    """Sprawdz czy wpis terminarza to sprawdzian / kartkowka / klasowka."""
+    if not isinstance(event, dict):
+        return False
+    rodzaj = (event.get("rodzaj") or "").lower()
+    if rodzaj in ("sprawdzian", "kartkowka"):
+        return True
+    t = (event.get("tytul") or "").lower()
+    return any(x in t for x in ("sprawdzian", "kartkówka", "kartkowka", "klasówka", "klasowka", "praca klasowa", "test"))
