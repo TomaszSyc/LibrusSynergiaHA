@@ -137,6 +137,36 @@ async def test_ocena_punktowa_nie_dubluje_oceny_z_biblioteki():
          patch("custom_components.librus_apix._parse_point_grades", return_value=punktowe):
         oceny = await client.async_get_grades()
     assert sorted(o["grade"] for o in oceny) == ["100", "87", "99"]
+    # Zostaje pełniejsza wersja punktowa (skala, procent, kategoria bez "(0-100)")
+    assert all(o["type"] == "points" for o in oceny)
+
+
+async def test_ocena_punktowa_ze_skala_zastepuje_wpis_biblioteki():
+    """#49: biblioteka zwraca ocenę punktową z kategorią "kartkówka (0-20)" - zostaje wersja z procentem."""
+    z_biblioteki = [_ocena("Fizyka", "14", "2026-10-19", kategoria="kartkówka (0-20)")]
+    punktowe = [{"subject": "Fizyka", "grade": "14", "date": "2026-10-19", "category": "kartkówka", "teacher": "",
+                 "semester": 1, "komentarz": "", "type": "points", "max_points": 20, "percent": 70.0, "counts": True}]
+    client = _klient(STRONA.format(nowy=""))
+    with patch("librus_apix.grades._extract_grades_numeric", return_value=(_sem({"Fizyka": z_biblioteki}), [])), \
+         patch("librus_apix.grades._extract_grades_descriptive", return_value=_sem({})), \
+         patch("custom_components.librus_apix._parse_point_grades", return_value=punktowe):
+        oceny = await client.async_get_grades()
+    assert len(oceny) == 1
+    assert oceny[0]["percent"] == 70.0
+    assert oceny[0]["category"] == "kartkówka"
+
+
+async def test_dwie_takie_same_oceny_punktowe_zastepuja_po_jednej():
+    """Dwie identyczne oceny w obu źródłach: dwie wersje punktowe, bez trzeciego wpisu."""
+    z_biblioteki = [_ocena("Fizyka", "100", "2026-10-20"), _ocena("Fizyka", "100", "2026-10-20")]
+    p = {"subject": "Fizyka", "grade": "100", "date": "2026-10-20", "category": "Kartkówka", "teacher": "",
+         "semester": 1, "komentarz": "", "type": "points", "max_points": 100, "percent": 100.0, "counts": True}
+    client = _klient(STRONA.format(nowy=""))
+    with patch("librus_apix.grades._extract_grades_numeric", return_value=(_sem({"Fizyka": z_biblioteki}), [])), \
+         patch("librus_apix.grades._extract_grades_descriptive", return_value=_sem({})), \
+         patch("custom_components.librus_apix._parse_point_grades", return_value=[dict(p), dict(p)]):
+        oceny = await client.async_get_grades()
+    assert [o["type"] for o in oceny] == ["points", "points"]
 
 
 async def test_dwie_takie_same_oceny_z_biblioteki_zostaja():

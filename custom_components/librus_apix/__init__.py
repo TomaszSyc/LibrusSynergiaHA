@@ -887,15 +887,20 @@ class LibrusApiClient:
                                     'type': 'descriptive'
                                 })
 
-                # Oceny punktowe pobrane z tego samego żądania. Gdy biblioteka
-                # zwróciła już tę samą ocenę (przedmiot, data, wartość), nie
-                # dublujemy jej (#49).
-                juz_sa = {_klucz_oceny(g) for g in all_grades}
+                # Oceny punktowe pobrane z tego samego żądania. Biblioteka potrafi
+                # zwrócić te same oceny z kategorią "kartkówka (0-100)" (#49) - wtedy
+                # zostaje wersja punktowa (skala, procent do średniej), a wpis
+                # z biblioteki jest zastępowany, po jednym na każdą ocenę punktową.
+                z_biblioteki: Dict[tuple, List[int]] = {}
+                for i, g in enumerate(all_grades):
+                    z_biblioteki.setdefault(_klucz_oceny(g), []).append(i)
                 for g in point_grades:
                     if g.get("semester") != current_sem:
                         continue
-                    if _klucz_oceny(g) in juz_sa:
-                        _LOGGER.debug("Pomijam ocenę punktową zwróconą już przez bibliotekę: %s", _klucz_oceny(g))
+                    indeksy = z_biblioteki.get(_klucz_oceny(g))
+                    if indeksy:
+                        _LOGGER.debug("Ocena punktowa zastępuje tę samą ocenę z biblioteki: %s", _klucz_oceny(g))
+                        all_grades[indeksy.pop(0)] = g
                         continue
                     all_grades.append(g)
 
