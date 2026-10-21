@@ -1,6 +1,7 @@
 """Platforma czujników dla integracji Librus APIX."""
 
 import asyncio
+import copy
 import json
 import logging
 import time
@@ -33,6 +34,27 @@ _LOGGER = logging.getLogger(__name__)
 def _id_nieobecnosci(lekcja: Dict) -> tuple:
     """Identyfikator wpisu frekwencji przy lekcji (zmiana wpisu = nowy id)."""
     return (lekcja.get("data"), lekcja.get("numer"), lekcja.get("przedmiot"), lekcja.get("obecnosc"))
+
+
+def _plan_bez_fuzji(plan: List[Dict]) -> List[Dict]:
+    """Kopia planu bez wpisow dodanych przez fuzje z terminarzem.
+
+    Plan z poprzedniego cyklu lub z cache jest juz scalony (zdarzenia przy
+    lekcjach, sztuczne lekcje "??:??", dni wolne). Ponowna fuzja na takim
+    planie dublowala wpisy i zostawiala zdarzenia usuniete z terminarza.
+    """
+    wynik = copy.deepcopy(plan or [])
+    for dzien in wynik:
+        if not isinstance(dzien, dict):
+            continue
+        dzien.pop("dzien_wolny", None)
+        if "lekcje" in dzien:
+            lekcje = [lk for lk in dzien["lekcje"] or [] if lk.get("godzina_od") != "??:??"]
+            for lk in lekcje:
+                lk["zdarzenie"] = None
+                lk.pop("zdarzenie_opis", None)
+            dzien["lekcje"] = lekcje
+    return wynik
 
 
 def _jest_nowa(date_str: str) -> bool:
@@ -494,7 +516,10 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                 else prev.get("frekwencja_stat")
             )
 
-            # Fuzja: Zdarzenia z terminarza -> plan lekcji (dodanie pola zdarzenie)
+            # Fuzja: Zdarzenia z terminarza -> plan lekcji (dodanie pola zdarzenie).
+            # Zawsze na kopii bez sladow poprzedniej fuzji - plan z pamieci lub
+            # cache jest juz scalony, a poprzedni stan uzywaja encje.
+            plan_lekcji = _plan_bez_fuzji(plan_lekcji)
             if plan_lekcji:
                 dni_wolne = {}
                 if terminarz:
@@ -630,17 +655,26 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                                         lekcja["zdarzenie_opis"] = opis_str
 
                                 # Jeśli dla sprawdzianu/kartkówki dopasowano lekcję z innym numerem, korygujemy numer w terminarzu
+                                # (bez zmiany, gdy lekcja miesci sie w zakresie, np. "3-4")
                                 first_best = best_lekcje[0]
+                                orig_num = t_ev.get("numer_lekcji")
+                                zakres = (
+                                    [x.strip() for x in str(orig_num).split("-")]
+                                    if orig_num not in (None, "", "unknown") else []
+                                )
                                 if is_exam and first_best.get("numer") is not None:
-                                    if str(t_ev.get("numer_lekcji")) != str(first_best["numer"]):
+                                    if str(first_best["numer"]) not in zakres:
                                         _LOGGER.debug(
                                             "Skorygowano numer lekcji w terminarzu dla '%s' (%s): %s -> %s",
                                             ev_title,
                                             ev_subject,
-                                            t_ev.get("numer_lekcji"),
+                                            orig_num,
                                             first_best["numer"],
                                         )
-                                        t_ev["numer_lekcji"] = first_best["numer"]
+                                        # Typ jak w oryginale (librus-apix zwraca tekst)
+                                        t_ev["numer_lekcji"] = (
+                                            str(first_best["numer"]) if isinstance(orig_num, str) else first_best["numer"]
+                                        )
                                         godz_od = first_best.get("godzina_od")
                                         if godz_od and "??" not in godz_od and t_ev.get("godzina") in ("unknown", "", None):
                                             t_ev["godzina"] = godz_od
@@ -652,6 +686,15 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                                 if ev_num and t_ev.get("rodzaj") not in ("nieobecnosc_nauczyciela", "dzien_wolny"):
                                     try:
                                         first_num = int(str(ev_num).split("-")[0])
+                                        # Na zajetej lekcji uczen ma inny przedmiot (np. sprawdzian
+                                        # innej grupy) - wpis zostaje w terminarzu, bez drugiej
+                                        # lekcji o tym samym numerze w planie.
+                                        if any(str(lk.get("numer")) == str(first_num) for lk in day.get("lekcje", [])):
+                                            _LOGGER.debug(
+                                                "Pomijam '%s' (%s) w planie: lekcja nr %s jest zajęta przez inny przedmiot",
+                                                ev_title, ev_subject, first_num,
+                                            )
+                                            continue
                                         ev_opis = t_ev.get("szczegoly", {}).get("Opis")
                                         opis_str = str(ev_opis).strip() if ev_opis and str(ev_opis).lower() != "unknown" else ""
                                         if len(opis_str) > 100:

@@ -8,6 +8,7 @@ from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
+from librus_apix.exceptions import TokenError
 
 from . import nowy_klient
 from .const import (
@@ -48,12 +49,42 @@ async def validate_input(hass: HomeAssistant, data: dict):
         
         if not token:
             raise ValueError("Authentication failed")
-            
-        return {"title": f"Librus APIX ({username})"}
-    
     except Exception as ex:
         _LOGGER.error("Authentication error: %s", ex)
         raise ValueError("Cannot connect") from ex
+
+    # Dostep do dziennika (#48): konto np. przedszkolne loguje sie poprawnie,
+    # ale Librus pokazuje "Brak dostepu". Gdy nie ma dziennika, wystarcza
+    # dostep do wiadomosci - integracja pominie niedostepne moduly.
+    if not await loop.run_in_executor(None, _ma_dostep, client):
+        raise PermissionError("Konto nie ma dostępu do dziennika ani wiadomości")
+
+    return {"title": f"Librus APIX ({username})"}
+
+
+def _ma_dostep(client) -> bool:
+    """Czy konto widzi dziennik (informacje o uczniu) albo chociaz wiadomosci."""
+    from librus_apix.messages import get_received
+    from librus_apix.student_information import get_student_information
+
+    try:
+        get_student_information(client)
+        return True
+    except TokenError as ex:
+        _LOGGER.warning("Konto nie ma dostępu do dziennika (Librus: Brak dostępu): %s", ex)
+    except Exception as ex:
+        # Inny blad (np. zmiana strony) nie blokuje dodania konta
+        _LOGGER.debug("Nie udało się sprawdzić dostępu do dziennika: %s", ex)
+        return True
+    try:
+        get_received(client, 0)
+        return True
+    except TokenError as ex:
+        _LOGGER.warning("Konto nie ma też dostępu do wiadomości: %s", ex)
+        return False
+    except Exception as ex:
+        _LOGGER.debug("Nie udało się sprawdzić dostępu do wiadomości: %s", ex)
+        return True
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -72,6 +103,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 info = await validate_input(self.hass, user_input)
             except ValueError:
                 errors["base"] = "cannot_connect"
+            except PermissionError:
+                errors["base"] = "no_access"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"

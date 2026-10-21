@@ -251,3 +251,74 @@ async def test_fuzja_zastepstwo_priorytet_numeru_lekcji(hass):
 
     # Lekcja 3 otrzymała zdarzenie zastępstwa
     assert lekcje[2]["zdarzenie"] == "Zastępstwo z Marek Krogulec na lekcji nr: 3 (wychowanie fizyczne)"
+
+
+def _dzien_czwartek():
+    return [{"dzien_tygodnia": "Czwartek", "data": "2026-10-22", "lekcje": [
+        dict(_lekcja(1, "08:00", "08:45"), przedmiot="Język polski", data="2026-10-22"),
+        dict(_lekcja(2, "08:55", "09:40"), przedmiot="Wychowanie fizyczne", data="2026-10-22"),
+        dict(_lekcja(3, "09:50", "10:35"), przedmiot="Historia", data="2026-10-22"),
+    ]}]
+
+
+def _test(tytul, rodzaj, przedmiot, nr):
+    return {"data": "2026-10-22", "tydzien": "Czwartek", "tytul": tytul, "rodzaj": rodzaj, "przedmiot": przedmiot,
+            "godzina": "unknown", "numer_lekcji": nr, "szczegoly": {}, "href": ""}
+
+
+async def test_sprawdzian_z_przedmiotu_spoza_dnia_nie_dubluje_zajetej_lekcji(hass):
+    """Sprawdzian z matematyki na lekcji 2, a uczeń ma wtedy WF: bez sztucznej drugiej lekcji nr 2."""
+    client = _klient_planu(_dzien_czwartek(), [_test("Sprawdzian", "sprawdzian", "matematyka", "2")])
+    data = await LibrusDataUpdateCoordinator(hass, client)._async_update_data()
+    lekcje = data["plan_lekcji"][0]["lekcje"]
+    assert [(l["numer"], l["przedmiot"]) for l in lekcje] == [(1, "Język polski"), (2, "Wychowanie fizyczne"), (3, "Historia")]
+    assert all(l["zdarzenie"] is None for l in lekcje)
+    # Wpis zostaje w terminarzu
+    assert data["terminarz"][0]["numer_lekcji"] == "2"
+
+
+async def test_sprawdzian_po_lekcjach_nadal_dodaje_lekcje(hass):
+    """Wolny numer lekcji (np. poprawa po lekcjach) - sztuczna lekcja jak dotąd."""
+    client = _klient_planu(_dzien_czwartek(), [_test("Sprawdzian", "sprawdzian", "matematyka", "7")])
+    data = await LibrusDataUpdateCoordinator(hass, client)._async_update_data()
+    lekcje = data["plan_lekcji"][0]["lekcje"]
+    assert [l["numer"] for l in lekcje] == [1, 2, 3, 7]
+    assert lekcje[3]["zdarzenie"] == "Sprawdzian"
+
+
+async def test_zakres_lekcji_nie_jest_nadpisywany(hass):
+    """Kartkówka na lekcjach 3-4 dopasowana do lekcji 3 zachowuje zakres."""
+    client = _klient_planu(_dzien_czwartek(), [_test("Kartkówka", "kartkowka", "historia", "3-4")])
+    data = await LibrusDataUpdateCoordinator(hass, client)._async_update_data()
+    assert data["plan_lekcji"][0]["lekcje"][2]["zdarzenie"] == "Kartkówka"
+    assert data["terminarz"][0]["numer_lekcji"] == "3-4"
+
+
+async def test_korekta_numeru_zachowuje_typ_tekstowy(hass):
+    """Numer z biblioteki jest tekstem - po korekcie nadal tekst."""
+    client = _klient_planu(_dzien_czwartek(), [_test("Sprawdzian", "sprawdzian", "historia", "1")])
+    data = await LibrusDataUpdateCoordinator(hass, client)._async_update_data()
+    assert data["terminarz"][0]["numer_lekcji"] == "3"
+
+
+async def test_ponowna_fuzja_poprzedniego_planu_bez_duplikatow(hass):
+    """Gdy plan nie zostanie pobrany, poprzedni (już scalony) plan nie dostaje drugi raz tych samych wpisów."""
+    client = _klient_planu(_dzien_czwartek(), [
+        _test("Sprawdzian", "sprawdzian", "matematyka", "7"),
+        _test("Kartkówka", "kartkowka", "historia", "3"),
+    ])
+    koordynator = LibrusDataUpdateCoordinator(hass, client)
+    pierwszy = await koordynator._async_update_data()
+    koordynator.data = pierwszy
+    assert [l["numer"] for l in pierwszy["plan_lekcji"][0]["lekcje"]] == [1, 2, 3, 7]
+
+    # Plan nie pobrany; kartkówkę usunięto z terminarza
+    client.async_get_timetable.return_value = None
+    client.async_get_schedule.return_value = [_test("Sprawdzian", "sprawdzian", "matematyka", "7")]
+    drugi = await koordynator._async_update_data()
+    lekcje = drugi["plan_lekcji"][0]["lekcje"]
+    assert [l["numer"] for l in lekcje] == [1, 2, 3, 7]
+    assert lekcje[2]["zdarzenie"] is None
+    assert lekcje[3]["zdarzenie"] == "Sprawdzian"
+    # Poprzedni stan (np. atrybuty encji) nie został zmieniony w miejscu
+    assert pierwszy["plan_lekcji"][0]["lekcje"][2]["zdarzenie"] == "Kartkówka"

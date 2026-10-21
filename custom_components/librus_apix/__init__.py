@@ -249,6 +249,43 @@ def _parse_point_grades(html) -> list:
     return result
 
 
+def _dolacz_oceny_opisowe_z_api(client, soup, desc_grades: list) -> None:
+    """Dolacz oceny opisowe z nowego schematu Librusa (#50).
+
+    W nowym schemacie strona zawiera pusta tabele, a oceny doczytuje JavaScript
+    z API. librus-apix >= 1.6.0 robi to w get_grades(), ale integracja wola
+    funkcje biblioteki bezposrednio (oceny punktowe i zachowanie z tej samej
+    strony), wiec powtarzamy ten krok. Jak w bibliotece: API uzupelnia tylko
+    przedmioty bez ocen opisowych z HTML. Wywolywane w executorze.
+    """
+    import librus_apix.grades as gr
+
+    pobierz = getattr(gr, "_extract_grades_descriptive_from_api", None)
+    if pobierz is None:
+        _LOGGER.warning(
+            "Szkoła używa nowego schematu ocen opisowych - do ich pobrania potrzebna jest biblioteka librus-apix >= 1.6.0"
+        )
+        return
+    try:
+        z_api = pobierz(client, soup.select("table.newSchemaGradesByStudentTable tr.studentRow"))
+    except Exception as ex:
+        _LOGGER.warning("Nie udało się pobrać ocen opisowych (nowy schemat Librusa): %s", ex, exc_info=_z_tracebackiem())
+        return
+    for i, semestr in enumerate(z_api[: len(desc_grades)]):
+        for przedmiot, oceny in semestr.items():
+            if not desc_grades[i][przedmiot]:
+                desc_grades[i][przedmiot] = oceny
+
+
+def _klucz_oceny(g: dict) -> tuple:
+    """Przedmiot, data i wartosc oceny - do wykrycia tej samej oceny z dwoch zrodel."""
+    return (
+        (g.get("subject") or "").strip().lower(),
+        _iso_date(str(g.get("date") or "")[:10]),
+        str(g.get("grade") or "").strip(),
+    )
+
+
 def _parse_behavior_grades(html) -> Optional[dict]:
     """Odczytaj oceny i punkty zachowania ze strony ocen.
 
@@ -492,6 +529,9 @@ class LibrusApiClient:
     # Chroni konto przed seria nieudanych logowan (np. po zmianie hasla).
     AUTH_BACKOFF_START = 300
     AUTH_BACKOFF_MAX = 7200
+    # TokenError na sesji mlodszej niz to (s) oznacza brak dostepu do modulu
+    SWIEZA_SESJA = 60
+    BRAK_DOSTEPU_BLOKADA = 24 * 3600
 
     def __init__(self, username: str, password: str, options: dict = None, hass: HomeAssistant = None):
         """Initialize the client."""
@@ -512,6 +552,42 @@ class LibrusApiClient:
         self._grades_attempted = False
         self._auth_failures = 0
         self._auth_blocked_until = 0.0
+        # Czas ostatniego udanego logowania i moduly bez dostepu (#48)
+        self._auth_time = 0.0
+        self._brak_dostepu: Dict[str, float] = {}
+        self._brak_dostepu_zgloszone: set = set()
+
+    def _modul_niedostepny(self, modul: str) -> bool:
+        """Czy modul jest pomijany po wczesniejszym "Brak dostepu" w Librusie."""
+        do_kiedy = self._brak_dostepu.get(modul)
+        if do_kiedy is None:
+            return False
+        if time.monotonic() < do_kiedy:
+            return True
+        self._brak_dostepu.pop(modul, None)
+        return False
+
+    def _obsluz_brak_dostepu(self, modul: str) -> bool:
+        """Rozpoznaj brak dostepu do modulu zamiast wygaslej sesji.
+
+        Librus dla modulow niedostepnych na koncie (np. konto przedszkolne) zwraca
+        strone "Brak dostepu", a librus-apix zglasza wtedy TokenError - tak samo
+        jak przy wygaslej sesji. Jesli sesja jest swieza, ponowne logowanie nic
+        nie da: oznaczamy modul jako niedostepny i pomijamy go przez dobe.
+        Zwraca True, gdy modul oznaczono (bez ponownego logowania).
+        """
+        if time.monotonic() - self._auth_time > self.SWIEZA_SESJA:
+            return False
+        self._brak_dostepu[modul] = time.monotonic() + self.BRAK_DOSTEPU_BLOKADA
+        if modul not in self._brak_dostepu_zgloszone:
+            self._brak_dostepu_zgloszone.add(modul)
+            _LOGGER.warning(
+                "Konto %s nie ma dostępu do modułu '%s' (Librus: Brak dostępu) - pomijam go przez %d h",
+                self.username, modul, self.BRAK_DOSTEPU_BLOKADA // 3600,
+            )
+        else:
+            _LOGGER.debug("Nadal brak dostępu do modułu '%s' dla %s", modul, self.username)
+        return True
 
     async def async_init_cache(self) -> None:
         """Load cached message contents from persistent store."""
@@ -636,6 +712,7 @@ class LibrusApiClient:
                     None, self._client.get_token, self.username, self.password
                 )
                 _LOGGER.debug("Authentication successful for %s", self.username)
+                self._auth_time = time.monotonic()
                 self._auth_failures = 0
                 self._auth_blocked_until = 0.0
                 return True
@@ -656,6 +733,8 @@ class LibrusApiClient:
     async def async_get_grades(self):
         """Get grades from Librus."""
         self._grades_attempted = True
+        if self._modul_niedostepny("oceny"):
+            return None
         for attempt in range(2):
             try:
                 if not self._client or not self._token:
@@ -680,6 +759,8 @@ class LibrusApiClient:
                         raise ParseError("Error in parsing grades")
                     num_grades, avg_grades = _extract_grades_numeric(tr)
                     desc_grades = _extract_grades_descriptive(tr)
+                    if soup.select_one("table.newSchemaGradesByStudentTable") is not None:
+                        _dolacz_oceny_opisowe_z_api(client, soup, desc_grades)
                     # Ten sam soup dla ocen punktowych i zachowania - strona
                     # ocen jest najwieksza, parsujemy ja tylko raz.
                     try:
@@ -768,20 +849,27 @@ class LibrusApiClient:
                                 desc_text = getattr(desc_grade, 'desc', '')
                                 parsed_cat = ""
                                 parsed_skill = ""
+                                parsed_area = ""
+                                parsed_content = ""
                                 parsed_teacher = getattr(desc_grade, 'teacher', '')
                                 parsed_comment = ""
-                                
+
                                 for line in desc_text.split('\n'):
                                     if line.startswith("Kategoria:"):
                                         parsed_cat = line.split(":", 1)[1].strip()
                                     elif line.startswith("Umiejętność:"):
                                         parsed_skill = line.split(":", 1)[1].strip()
+                                    elif line.startswith("Obszar:"):
+                                        # Nowy schemat ocen opisowych (obszar oceniania)
+                                        parsed_area = line.split(":", 1)[1].strip()
+                                    elif line.startswith("Treść oceny:"):
+                                        parsed_content = line.split(":", 1)[1].strip()
                                     elif not parsed_teacher and line.startswith("Nauczyciel:"):
                                         parsed_teacher = line.split(":", 1)[1].strip()
                                     elif line.startswith("Komentarz:"):
                                         parsed_comment = line.split(":", 1)[1].strip()
                                 
-                                final_cat = parsed_cat
+                                final_cat = parsed_cat or parsed_area
                                 if not final_cat and parsed_skill:
                                     final_cat = parsed_skill
                                 elif not final_cat:
@@ -795,18 +883,27 @@ class LibrusApiClient:
                                     'teacher': parsed_teacher,
                                     'semester': desc_grade.semester,
                                     'komentarz': parsed_comment,
-                                    'opis': _opis_oceny(desc_text),
+                                    'opis': _opis_oceny(desc_text) or parsed_content,
                                     'type': 'descriptive'
                                 })
 
-                # Oceny punktowe pobrane z tego samego żądania
+                # Oceny punktowe pobrane z tego samego żądania. Gdy biblioteka
+                # zwróciła już tę samą ocenę (przedmiot, data, wartość), nie
+                # dublujemy jej (#49).
+                juz_sa = {_klucz_oceny(g) for g in all_grades}
                 for g in point_grades:
-                    if g.get("semester") == current_sem:
-                        all_grades.append(g)
+                    if g.get("semester") != current_sem:
+                        continue
+                    if _klucz_oceny(g) in juz_sa:
+                        _LOGGER.debug("Pomijam ocenę punktową zwróconą już przez bibliotekę: %s", _klucz_oceny(g))
+                        continue
+                    all_grades.append(g)
 
                 return all_grades
 
             except TokenError as ex:
+                if self._obsluz_brak_dostepu("oceny"):
+                    return None
                 _LOGGER.debug(
                     "Token expired fetching grades (attempt %d/2), re-authenticating...",
                     attempt + 1,
@@ -840,6 +937,8 @@ class LibrusApiClient:
 
     async def async_get_messages(self, count: int = 10):
         """Get latest messages from Librus (subject and sender only, no content fetch to avoid marking as read)."""
+        if self._modul_niedostepny("wiadomosci"):
+            return None
         for attempt in range(2):
             try:
                 if not self._client or not self._token:
@@ -895,6 +994,8 @@ class LibrusApiClient:
                 return result
 
             except TokenError as ex:
+                if self._obsluz_brak_dostepu("wiadomosci"):
+                    return None
                 _LOGGER.debug(
                     "Token expired fetching messages (attempt %d/2), re-authenticating...",
                     attempt + 1,
@@ -914,6 +1015,8 @@ class LibrusApiClient:
 
     async def async_get_homework(self):
         """Get upcoming homework assignments from Librus (next 30 days)."""
+        if self._modul_niedostepny("zadania"):
+            return None
         for attempt in range(2):
             try:
                 if not self._client or not self._token:
@@ -933,6 +1036,8 @@ class LibrusApiClient:
                 )
 
             except TokenError:
+                if self._obsluz_brak_dostepu("zadania"):
+                    return None
                 _LOGGER.debug(
                     "Token expired fetching homework (attempt %d/2), re-authenticating...",
                     attempt + 1,
@@ -952,6 +1057,8 @@ class LibrusApiClient:
 
     async def async_get_schedule(self):
         """Get upcoming calendar events from Librus (current + next month, filtered to future dates)."""
+        if self._modul_niedostepny("terminarz"):
+            return None
         for attempt in range(2):
             try:
                 if not self._client or not self._token:
@@ -1009,6 +1116,8 @@ class LibrusApiClient:
                 return await loop.run_in_executor(None, _fetch_two_months)
 
             except TokenError:
+                if self._obsluz_brak_dostepu("terminarz"):
+                    return None
                 _LOGGER.debug(
                     "Token expired fetching schedule (attempt %d/2), re-authenticating...",
                     attempt + 1,
@@ -1151,6 +1260,8 @@ class LibrusApiClient:
 
     async def async_get_timetable(self):
         """Get timetable (plan lekcji) from Librus."""
+        if self._modul_niedostepny("plan"):
+            return None
         for attempt in range(2):
             try:
                 if not self._client or not self._token:
@@ -1379,6 +1490,8 @@ class LibrusApiClient:
                 return result
 
             except TokenError:
+                if self._obsluz_brak_dostepu("plan"):
+                    return None
                 _LOGGER.debug(
                     "Token expired fetching timetable (attempt %d/2), re-authenticating...",
                     attempt + 1,
@@ -1401,6 +1514,8 @@ class LibrusApiClient:
 
     async def async_get_student_information(self):
         """Get student information from Librus."""
+        if self._modul_niedostepny("informacje"):
+            return None
         for attempt in range(2):
             try:
                 if not self._client or not self._token:
@@ -1413,6 +1528,8 @@ class LibrusApiClient:
                 return await loop.run_in_executor(None, get_student_information, self._client)
 
             except TokenError:
+                if self._obsluz_brak_dostepu("informacje"):
+                    return None
                 _LOGGER.debug(
                     "Token expired fetching student information (attempt %d/2), re-authenticating...",
                     attempt + 1,
@@ -1432,6 +1549,8 @@ class LibrusApiClient:
 
     async def async_get_attendance(self):
         """Get attendance from Librus."""
+        if self._modul_niedostepny("frekwencja"):
+            return None
         for attempt in range(2):
             try:
                 if not self._client or not self._token:
@@ -1456,6 +1575,8 @@ class LibrusApiClient:
                             })
                 return result
             except TokenError:
+                if self._obsluz_brak_dostepu("frekwencja"):
+                    return None
                 _LOGGER.debug("Token expired fetching attendance (attempt %d/2), re-authenticating...", attempt + 1)
                 self._reset_auth()
                 if attempt == 1:
@@ -1470,6 +1591,8 @@ class LibrusApiClient:
 
     async def async_get_announcements(self):
         """Get announcements from Librus."""
+        if self._modul_niedostepny("ogloszenia"):
+            return None
         for attempt in range(2):
             try:
                 if not self._client or not self._token:
@@ -1491,6 +1614,8 @@ class LibrusApiClient:
                         })
                 return result
             except TokenError:
+                if self._obsluz_brak_dostepu("ogloszenia"):
+                    return None
                 _LOGGER.debug("Token expired fetching announcements (attempt %d/2), re-authenticating...", attempt + 1)
                 self._reset_auth()
                 if attempt == 1:
@@ -1515,6 +1640,8 @@ class LibrusApiClient:
         szkol ma dodatkowa kolumne "e-Tablica" - wtedy biblioteka zwraca
         pusta frekwencje zamiast "ob"/"nb".
         """
+        if self._modul_niedostepny("tematy"):
+            return None
         for attempt in range(2):
             try:
                 if not self._client or not self._token:
@@ -1580,6 +1707,8 @@ class LibrusApiClient:
                 return result
 
             except TokenError:
+                if self._obsluz_brak_dostepu("tematy"):
+                    return None
                 _LOGGER.debug(
                     "Token expired fetching completed lessons (attempt %d/2), re-authenticating...",
                     attempt + 1,

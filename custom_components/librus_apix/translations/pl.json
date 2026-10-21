@@ -12,6 +12,7 @@
     },
     "error": {
       "cannot_connect": "Nie udało się połączyć z Librusem. Sprawdź swoje dane logowania.",
+      "no_access": "To konto nie ma dostępu do dziennika Synergia ani do wiadomości (Librus pokazuje „Brak dostępu”), np. konto przedszkolne.",
       "unknown": "Wystąpił nieoczekiwany błąd"
     },
     "abort": {

@@ -12,6 +12,7 @@
     },
     "error": {
       "cannot_connect": "Failed to connect to Librus. Please check your credentials.",
+      "no_access": "This account has no access to the Synergia school register or messages (Librus shows 'Brak dostępu'), e.g. a preschool account.",
       "unknown": "Unexpected error occurred"
     },
     "abort": {
