@@ -62,6 +62,8 @@ Lub ręcznie:
 3. Podaj swoje dane logowania do Librus Synergia.
 4. Kliknij **"Zatwierdź"**
 
+> **Konta bez dostępu do dziennika (np. przedszkolne):** jeśli Librus pokazuje dla konta „Brak dostępu” do części modułów, integracja pomija je i pobiera tylko dostępne dane (np. wiadomości). Gdy konto nie ma dostępu ani do dziennika, ani do wiadomości, kreator dodawania integracji wyświetli komunikat zamiast tworzyć pusty wpis.
+
 ### Opcje integracji i Asystent AI
 Po zainstalowaniu integracji możesz dostosować jej działanie klikając **"Konfiguruj"** na karcie integracji:
 * **Krok 1 (Ustawienia ogólne):** Liczba pobieranych wiadomości, włączenie pobierania pełnej treści oraz liczba dni wyprzedzenia dla przypomnień o sprawdzianach (moduł To-Do) oraz częstotliwość odpytywania Librusa: osobno w dni robocze 7:00–16:00 (domyślnie co 15 min, zakres 15–240) i w pozostałym czasie (domyślnie co 120 min, zakres 30–720). Większe wartości to mniej zapytań do Librusa.
@@ -77,7 +79,7 @@ Integracja tworzy następujące sensory i encje:
 |---|---|---|
 | `sensor.librus_[uczen]` | Informacje o uczniu (klasa, wychowawca, szkoła) | imię i nazwisko |
 | `sensor.librus_[uczen]_szczesliwy_numerek` | Szczęśliwy numerek dnia | numer |
-| `sensor.librus_[uczen]_oceny` | Wszystkie oceny bieżącego semestru; przy ocenach punktowych/procentowych zawiera pełną treść | liczba ocen |
+| `sensor.librus_[uczen]_oceny` | Wszystkie oceny bieżącego semestru (liczbowe, punktowe/procentowe i opisowe – także z nowego schematu z obszarami oceniania); przy ocenach punktowych/procentowych zawiera pełną treść | liczba ocen |
 | `sensor.librus_[uczen]_srednia_ocen` | **Globalna średnia** ze wszystkich przedmiotów | float (wykres 📈) |
 | `sensor.librus_[uczen]_wiadomosci` | Ostatnie wiadomości (domyślnie 10, konfigurowalne) | liczba nieprzeczytanych |
 | `sensor.librus_[uczen]_uwagi` | (NOWOŚĆ) Uwagi o zachowaniu (pozytywne, negatywne, neutralne) | liczba uwag |
@@ -809,7 +811,7 @@ logger:
 - Komunikacja z Librus odbywa się przez oficjalny portal i bezpieczne API.
 
 ### 🐛 Zgłaszanie błędów
-Jeśli znajdziesz błąd, włącz logi debug, skopiuj wpisy z błędem i utwórz issue na GitHubie.
+Jeśli znajdziesz błąd, włącz logi debug, skopiuj wpisy z błędem i utwórz issue na GitHubie. Przy problemach z ocenami pomocny jest też atrybut `oceny` czujnika danego przedmiotu (**Narzędzia deweloperskie → Stany**) – usuń z niego dane, których nie chcesz udostępniać.
 
 ---
 
@@ -819,6 +821,13 @@ MIT License - patrz [LICENSE](LICENSE)
 ---
 
 ## 📝 Historia Zmian
+
+### v3.0.4
+- 👶 **Konta bez dostępu do dziennika (Issue #48)**: Konta, dla których Librus pokazuje stronę „Brak dostępu” (np. konta przedszkolne), nie powodują już ponownego logowania przy każdym odświeżeniu. Niedostępne moduły są pomijane przez dobę (jedno ostrzeżenie w logu na moduł), a dostępne – np. wiadomości – pobierane dalej. Przy dodawaniu konta, które nie ma dostępu ani do dziennika, ani do wiadomości, kreator wyświetla odpowiedni komunikat.
+- 📝 **Oceny opisowe w nowym schemacie Librusa (Issue #50)**: Obsługa ocen opisowych z obszarami oceniania („Bieżące oceny opisowe”), które Librus doczytuje z API. Oceny pojawiają się przy przedmiotach, a obszar oceniania jest ich kategorią. Wymaga biblioteki `librus-apix` 1.6.0 (instalowana automatycznie).
+- 🧮 **Zabezpieczenie przed dublowaniem ocen punktowych (Issue #49)**: Ocena z sekcji „Oceny punktowe” nie jest dodawana drugi raz, jeśli ta sama ocena (przedmiot, data, wartość) została już odczytana z tabeli ocen.
+- 🎯 **Dokładniejsza fuzja terminarza z planem lekcji**: Sprawdzian z przedmiotu, którego uczeń nie ma na danej lekcji (np. sprawdzian innej grupy), nie tworzy już w planie dodatkowej lekcji o tym samym numerze. Zakres lekcji (np. „3-4”) w terminarzu nie jest nadpisywany, a ponowne scalenie planu z pamięci podręcznej nie dubluje wpisów i usuwa zdarzenia skasowane z terminarza.
+- 📦 **Wymagana biblioteka `librus-apix` >= 1.6.0.**
 
 ### v3.0.3
 - 📅 **Prawidłowy stan „on” w kalendarzach (PR #47, Issue #46)**: Poprawiono właściwość `event` w encjach `plan_lekcji_kalendarz` oraz `terminarz_kalendarz` – encje kalendarza prawidłowo przyjmują stan `on` podczas trwania bieżących lekcji lub sprawdzianów (dzięki **@morbiasz** i **@PePeLLee**).
