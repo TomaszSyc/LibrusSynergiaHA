@@ -441,10 +441,10 @@ severity:
 
 `sensor.librus_<uczen>_zachowanie` — stan to ocena roczna, a gdy jej nie ma, ocena z II, potem z I okresu. Atrybuty: `okres_1`, `okres_2`, `roczna` (każdy z polami `ocena` i `propozycja`), `wpisy`, `wpisy_pozytywne`, `wpisy_negatywne`.
 
-Zdarzenia (pierwsze odświeżenie po starcie niczego nie wysyła):
+Zdarzenia (zasady wykrywania nowych wpisów — w sekcji o automatyzacjach poniżej):
 
-- `librus_apix_nowa_uwaga` — dane: `data`, `nauczyciel`, `rodzaj`, `kategoria`, `tresc`
-- `librus_apix_nowy_wpis_zachowania` — dane: `okres`, `ocena`, `rodzaj`, `data`, `nauczyciel`, `komentarz`
+- `librus_apix_nowa_uwaga` — dane: `uczen`, `data`, `nauczyciel`, `rodzaj`, `kategoria`, `tresc`
+- `librus_apix_nowy_wpis_zachowania` — dane: `uczen`, `okres`, `ocena`, `rodzaj`, `data`, `nauczyciel`, `komentarz`
 
 ```yaml
 automation:
@@ -455,7 +455,7 @@ automation:
     action:
       - service: notify.mobile_app_NAZWA_TWOJEGO_TELEFONU
         data:
-          title: "Nowa uwaga ({{ trigger.event.data.rodzaj }})"
+          title: "{{ trigger.event.data.uczen }}: nowa uwaga ({{ trigger.event.data.rodzaj }})"
           message: >-
             {{ trigger.event.data.nauczyciel }}, {{ trigger.event.data.data }}:
             {{ trigger.event.data.tresc }}
@@ -464,7 +464,7 @@ automation:
 ## 🔔 Automatyzacje powiadomień na telefon
 
 Integracja wysyła zdarzenia Home Assistant gdy pojawi się nowa wiadomość lub ocena.
-Zdarzenia są wykrywane przy każdym odświeżeniu (co 2h). Pierwsze uruchomienie tylko zapamiętuje stan — **nie wysyła duplikatów**.
+Zdarzenia są wykrywane przy każdym odświeżeniu (co 2h). Widziane wpisy integracja zapamiętuje na dysku (`.storage/librus_apix.widziane.<id wpisu>`), więc po restarcie Home Assistanta przychodzą tylko wpisy dodane w czasie przestoju. Pierwsze udane pobranie danej kategorii (np. zaraz po instalacji) tylko zapamiętuje stan — **nie wysyła duplikatów**.
 
 > **Test bez czekania:** Idź do **Developer Tools → Events**, Event type: `librus_apix_nowa_wiadomosc`, Event data jak poniżej i kliknij **Fire Event**.
 

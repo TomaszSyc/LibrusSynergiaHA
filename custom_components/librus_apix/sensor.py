@@ -8,6 +8,7 @@ from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
@@ -141,19 +142,26 @@ def _wpis_zachowania_id(wpis: Dict[str, Any]) -> tuple:
     )
 
 
+WIDZIANE_WERSJA = 1
+WIDZIANE_OPOZNIENIE_ZAPISU = 10
+
+
+def klucz_widzianych(entry_id: str) -> str:
+    return f"{DOMAIN}.widziane.{entry_id}"
+
+
 class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
     """Klasa zarzadzajaca pobieraniem danych z Librus."""
 
-    def __init__(self, hass: HomeAssistant, client: Any) -> None:
+    def __init__(self, hass: HomeAssistant, client: Any, entry_id: Optional[str] = None) -> None:
         """Inicjalizacja koordynatora."""
         self.client = client
-        self._seen_message_hrefs: set = set()
-        self._seen_grade_ids: set = set()
-        self._seen_homework_ids: set = set()
-        self._seen_schedule_ids: set = set()
-        self._seen_uwagi_ids: set = set()
-        self._seen_wpisy_zachowania_ids: set = set()
-        self._first_run: bool = True
+        # Identyfikatory widzianych wpisow wg kategorii. Brak kategorii = jeszcze bez bazy:
+        # pierwsze udane pobranie tylko ja zapamietuje, bez zdarzen.
+        self._widziane: Dict[str, set] = {}
+        self._store: Optional[Store] = (
+            Store(hass, WIDZIANE_WERSJA, klucz_widzianych(entry_id)) if entry_id else None
+        )
         # Tematy lekcji pobieramy tylko, gdy ich sensor jest wlaczony (ustawia go sam sensor)
         self.tematy_wlaczone: bool = False
         super().__init__(
@@ -162,6 +170,44 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
             name=DOMAIN,
             update_interval=SCAN_INTERVAL,
         )
+
+    async def async_wczytaj_widziane(self) -> None:
+        """Wczytaj z dysku wpisy widziane przed restartem."""
+        if self._store is None:
+            return
+        dane = await self._store.async_load() or {}
+        # JSON zapisuje krotki jako listy
+        self._widziane = {
+            kategoria: {tuple(i) if isinstance(i, list) else i for i in ids}
+            for kategoria, ids in dane.items()
+        }
+
+    @callback
+    def _dane_widzianych(self) -> Dict[str, List]:
+        return {kategoria: list(ids) for kategoria, ids in self._widziane.items()}
+
+    def _nowe(self, kategoria: str, elementy: Optional[List], klucz) -> List:
+        """Zwroc elementy jeszcze niewidziane; None = dane nie pobraly sie w tym cyklu."""
+        if elementy is None:
+            return []
+        widziane = self._widziane.get(kategoria)
+        if widziane is None:
+            self._widziane[kategoria] = {klucz(e) for e in elementy}
+            self._zapisz_widziane()
+            return []
+        nowe = []
+        for element in elementy:
+            k = klucz(element)
+            if k not in widziane:
+                widziane.add(k)
+                nowe.append(element)
+        if nowe:
+            self._zapisz_widziane()
+        return nowe
+
+    def _zapisz_widziane(self) -> None:
+        if self._store is not None:
+            self._store.async_delay_save(self._dane_widzianych, WIDZIANE_OPOZNIENIE_ZAPISU)
 
     async def async_odswiez_tematy(self) -> None:
         """Pobierz same tematy lekcji (pierwsze odswiezenie odbywa sie przed dodaniem sensora)."""
@@ -194,6 +240,7 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
             frekwencja_stat_raw = await self.client.async_get_attendance_stats()
 
             prev = self.data or {}
+            oceny_pobrane = grades is not None
 
             if grades is None:
                 # Brak ocen moze oznaczac tymczasowy blad, ale rowniez konto bez
@@ -359,34 +406,17 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
                 "semestr_biezacy": getattr(self.client, "biezacy_semestr", 1),
             }
 
-            # Pierwsze pobranie - tylko zapamietaj stan, nie wysylaj powiadomien
-            if self._first_run:
-                self._first_run = False
-                for msg in wiadomosci:
-                    self._seen_message_hrefs.add(msg["href"])
-                for grade in grades:
-                    self._seen_grade_ids.add(
-                        (grade["subject"], grade["date"], grade["grade"])
-                    )
-                for zadanie in zadania:
-                    self._seen_homework_ids.add(
-                        (zadanie["przedmiot"], zadanie["termin"], zadanie["kategoria"])
-                    )
-                for zdarzenie in terminarz:
-                    self._seen_schedule_ids.add(
-                        (zdarzenie["data"], zdarzenie["tytul"], zdarzenie["przedmiot"])
-                    )
-                for uwaga in uwagi:
-                    self._seen_uwagi_ids.add(uwaga.get("id"))
-                for wpis in zachowanie.get("wpisy", []):
-                    self._seen_wpisy_zachowania_ids.add(_wpis_zachowania_id(wpis))
-            else:
-                uczen = getattr(student_info, "name", "Nieznany uczeń") if student_info else "Nieznany uczeń"
-                self._fire_events(wiadomosci, grades, uczen)
-                self._fire_homework_events(zadania, uczen)
-                self._fire_schedule_events(terminarz, uczen)
-                self._fire_uwagi_events(uwagi)
-                self._fire_zachowanie_events(zachowanie)
+            # Zdarzenia tylko dla danych pobranych w tym cyklu (dane z cache sa juz widziane)
+            uczen = getattr(student_info, "name", "Nieznany uczeń") if student_info else "Nieznany uczeń"
+            self._fire_events(
+                wiadomosci if messages is not None else None,
+                grades if oceny_pobrane else None,
+                uczen,
+            )
+            self._fire_homework_events(zadania if homework_raw is not None else None, uczen)
+            self._fire_schedule_events(terminarz if schedule_raw is not None else None, uczen)
+            self._fire_uwagi_events(uwagi if uwagi_raw is not None else None, uczen)
+            self._fire_zachowanie_events(zachowanie if zachowanie_raw is not None else None, uczen)
 
             return result
 
@@ -395,85 +425,83 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise UpdateFailed(f"Blad komunikacji z API: {err}") from err
 
-    def _fire_events(self, messages: List[Dict], grades: List[Dict], uczen: str) -> None:
+    def _fire_events(
+        self, messages: Optional[List[Dict]], grades: Optional[List[Dict]], uczen: str
+    ) -> None:
         """Wyslij zdarzenia HA dla nowych wiadomosci i ocen."""
-        for msg in messages:
-            href = msg.get("href", "")
-            if href and href not in self._seen_message_hrefs:
-                self._seen_message_hrefs.add(href)
-                _LOGGER.debug("Nowa wiadomosc: %s", msg.get("title"))
-                self.hass.bus.fire(
-                    EVENT_NOWA_WIADOMOSC,
-                    {
-                        "uczen": uczen,
-                        "nadawca": msg.get("author", ""),
-                        "temat": msg.get("title", ""),
-                        "data": msg.get("date", ""),
-                        "ma_zalacznik": msg.get("has_attachment", False),
-                    },
-                )
+        if messages is not None:
+            messages = [m for m in messages if m.get("href")]
+        for msg in self._nowe("wiadomosci", messages, lambda m: m["href"]):
+            _LOGGER.debug("Nowa wiadomosc: %s", msg.get("title"))
+            self.hass.bus.fire(
+                EVENT_NOWA_WIADOMOSC,
+                {
+                    "uczen": uczen,
+                    "nadawca": msg.get("author", ""),
+                    "temat": msg.get("title", ""),
+                    "data": msg.get("date", ""),
+                    "ma_zalacznik": msg.get("has_attachment", False),
+                },
+            )
 
-        for grade in grades:
-            grade_id = (grade["subject"], grade["date"], grade["grade"])
-            if grade_id not in self._seen_grade_ids:
-                self._seen_grade_ids.add(grade_id)
-                _LOGGER.debug("Nowa ocena: %s %s", grade["subject"], grade["grade"])
-                self.hass.bus.fire(
-                    EVENT_NOWA_OCENA,
-                    {
-                        "uczen": uczen,
-                        "przedmiot": grade["subject"],
-                        "ocena": grade["grade"],
-                        "data": grade["date"],
-                        "kategoria": grade["category"],
-                        "nauczyciel": grade["teacher"],
-                    },
-                )
+        for grade in self._nowe(
+            "oceny", grades, lambda g: (g["subject"], g["date"], g["grade"])
+        ):
+            _LOGGER.debug("Nowa ocena: %s %s", grade["subject"], grade["grade"])
+            self.hass.bus.fire(
+                EVENT_NOWA_OCENA,
+                {
+                    "uczen": uczen,
+                    "przedmiot": grade["subject"],
+                    "ocena": grade["grade"],
+                    "data": grade["date"],
+                    "kategoria": grade["category"],
+                    "nauczyciel": grade["teacher"],
+                },
+            )
 
-    def _fire_schedule_events(self, terminarz: List[Dict], uczen: str) -> None:
+    def _fire_schedule_events(self, terminarz: Optional[List[Dict]], uczen: str) -> None:
         """Wyslij zdarzenia HA dla nowych zdarzen w kalendarzu."""
-        for zdarzenie in terminarz:
-            ev_id = (zdarzenie["data"], zdarzenie["tytul"], zdarzenie["przedmiot"])
-            if ev_id not in self._seen_schedule_ids:
-                self._seen_schedule_ids.add(ev_id)
-                _LOGGER.debug("Nowe zdarzenie: %s %s %s", zdarzenie["data"], zdarzenie["przedmiot"], zdarzenie["tytul"])
-                self.hass.bus.fire(
-                    EVENT_NOWE_ZDARZENIE,
-                    {
-                        "uczen": uczen,
-                        "data": zdarzenie["data"],
-                        "tytul": zdarzenie["tytul"],
-                        "przedmiot": zdarzenie["przedmiot"],
-                        "godzina": zdarzenie["godzina"],
-                    },
-                )
+        for zdarzenie in self._nowe(
+            "terminarz", terminarz, lambda z: (z["data"], z["tytul"], z["przedmiot"])
+        ):
+            _LOGGER.debug("Nowe zdarzenie: %s %s %s", zdarzenie["data"], zdarzenie["przedmiot"], zdarzenie["tytul"])
+            self.hass.bus.fire(
+                EVENT_NOWE_ZDARZENIE,
+                {
+                    "uczen": uczen,
+                    "data": zdarzenie["data"],
+                    "tytul": zdarzenie["tytul"],
+                    "przedmiot": zdarzenie["przedmiot"],
+                    "godzina": zdarzenie["godzina"],
+                },
+            )
 
-    def _fire_uwagi_events(self, uwagi: List[Dict]) -> None:
+    def _fire_uwagi_events(self, uwagi: Optional[List[Dict]], uczen: str) -> None:
         """Wyslij zdarzenia HA dla nowych uwag."""
-        for uwaga in uwagi:
-            uwaga_id = uwaga.get("id")
-            if uwaga_id in self._seen_uwagi_ids:
-                continue
-            self._seen_uwagi_ids.add(uwaga_id)
+        for uwaga in self._nowe("uwagi", uwagi, lambda u: u.get("id")):
             _LOGGER.debug("Nowa uwaga: %s", uwaga.get("data"))
             self.hass.bus.fire(
                 EVENT_NOWA_UWAGA,
-                {k: uwaga.get(k, "") for k in ("data", "nauczyciel", "rodzaj", "kategoria", "tresc")},
+                {
+                    "uczen": uczen,
+                    **{k: uwaga.get(k, "") for k in ("data", "nauczyciel", "rodzaj", "kategoria", "tresc")},
+                },
             )
 
-    def _fire_zachowanie_events(self, zachowanie: Dict[str, Any]) -> None:
+    def _fire_zachowanie_events(self, zachowanie: Optional[Dict[str, Any]], uczen: str) -> None:
         """Wyslij zdarzenia HA dla nowych wpisow o zachowaniu."""
-        for wpis in zachowanie.get("wpisy", []):
-            wpis_id = _wpis_zachowania_id(wpis)
-            if wpis_id in self._seen_wpisy_zachowania_ids:
-                continue
-            self._seen_wpisy_zachowania_ids.add(wpis_id)
+        wpisy = zachowanie.get("wpisy", []) if zachowanie is not None else None
+        for wpis in self._nowe("zachowanie", wpisy, _wpis_zachowania_id):
             _LOGGER.debug("Nowy wpis zachowania: %s", wpis.get("data"))
             self.hass.bus.fire(
                 EVENT_NOWY_WPIS_ZACHOWANIA,
                 {
-                    k: wpis.get(k, "")
-                    for k in ("okres", "ocena", "rodzaj", "data", "nauczyciel", "komentarz")
+                    "uczen": uczen,
+                    **{
+                        k: wpis.get(k, "")
+                        for k in ("okres", "ocena", "rodzaj", "data", "nauczyciel", "komentarz")
+                    },
                 },
             )
 
@@ -503,23 +531,22 @@ class LibrusDataUpdateCoordinator(DataUpdateCoordinator):
         ]
         return sorted(zadania, key=lambda z: z["termin"])
 
-    def _fire_homework_events(self, zadania: List[Dict], uczen: str) -> None:
+    def _fire_homework_events(self, zadania: Optional[List[Dict]], uczen: str) -> None:
         """Wyslij zdarzenia HA dla nowych zadan/sprawdzianow."""
-        for zadanie in zadania:
-            hw_id = (zadanie["przedmiot"], zadanie["termin"], zadanie["kategoria"])
-            if hw_id not in self._seen_homework_ids:
-                self._seen_homework_ids.add(hw_id)
-                _LOGGER.debug("Nowe zadanie: %s %s", zadanie["przedmiot"], zadanie["kategoria"])
-                self.hass.bus.fire(
-                    EVENT_NOWE_ZADANIE,
-                    {
-                        "uczen": uczen,
-                        "przedmiot": zadanie["przedmiot"],
-                        "kategoria": zadanie["kategoria"],
-                        "termin": zadanie["termin"],
-                        "nauczyciel": zadanie["nauczyciel"],
-                    },
-                )
+        for zadanie in self._nowe(
+            "zadania", zadania, lambda z: (z["przedmiot"], z["termin"], z["kategoria"])
+        ):
+            _LOGGER.debug("Nowe zadanie: %s %s", zadanie["przedmiot"], zadanie["kategoria"])
+            self.hass.bus.fire(
+                EVENT_NOWE_ZADANIE,
+                {
+                    "uczen": uczen,
+                    "przedmiot": zadanie["przedmiot"],
+                    "kategoria": zadanie["kategoria"],
+                    "termin": zadanie["termin"],
+                    "nauczyciel": zadanie["nauczyciel"],
+                },
+            )
 
 
 def _device_info(coordinator: DataUpdateCoordinator, config_entry: ConfigEntry) -> Dict[str, Any]:

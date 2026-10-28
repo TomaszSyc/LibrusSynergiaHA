@@ -1177,7 +1177,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(update_listener))
     
     from .sensor import LibrusDataUpdateCoordinator
-    coordinator = LibrusDataUpdateCoordinator(hass, client)
+    coordinator = LibrusDataUpdateCoordinator(hass, client, entry.entry_id)
+    await coordinator.async_wczytaj_widziane()
     await coordinator.async_config_entry_first_refresh()
     client.coordinator = coordinator
     
@@ -1198,6 +1199,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id)
     
     return unload_ok
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Usun zapamietane widziane wpisy razem z wpisem konfiguracyjnym."""
+    from homeassistant.helpers.storage import Store
+    from .sensor import WIDZIANE_WERSJA, klucz_widzianych
+    await Store(hass, WIDZIANE_WERSJA, klucz_widzianych(entry.entry_id)).async_remove()
+
 
 async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle options update."""

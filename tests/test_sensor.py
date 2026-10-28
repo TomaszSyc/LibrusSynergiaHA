@@ -41,6 +41,12 @@ def _zachowanie(**kw):
     return d
 
 
+def _uczen(imie):
+    info = MagicMock()
+    info.name = imie
+    return info
+
+
 def _entry():
     e = MagicMock()
     e.entry_id = "test_123"
@@ -419,6 +425,7 @@ async def test_zachowanie_sensor(coordinator, mock_client):
 async def test_zdarzenie_nowej_uwagi(coordinator, mock_client, hass):
     from custom_components.librus_apix.sensor import EVENT_NOWA_UWAGA
     mock_client.async_get_grades.return_value = []
+    mock_client.async_get_student_information.return_value = _uczen("Jan Kowalski")
     zdarzenia = []
     hass.bus.async_listen(EVENT_NOWA_UWAGA, lambda e: zdarzenia.append(e.data))
     mock_client.async_get_uwagi.return_value = ([_uwaga(1)], False)
@@ -431,6 +438,7 @@ async def test_zdarzenie_nowej_uwagi(coordinator, mock_client, hass):
     await hass.async_block_till_done()
     assert len(zdarzenia) == 1
     assert zdarzenia[0] == {
+        "uczen": "Jan Kowalski",
         "data": "2026-09-12", "nauczyciel": "Anna Wzorowa",
         "rodzaj": "Negatywna", "kategoria": "Zachowanie na lekcji",
         "tresc": "Fikcyjna uwaga 2",
@@ -444,6 +452,7 @@ async def test_zdarzenie_nowej_uwagi(coordinator, mock_client, hass):
 async def test_zdarzenie_nowego_wpisu_zachowania(coordinator, mock_client, hass):
     from custom_components.librus_apix.sensor import EVENT_NOWY_WPIS_ZACHOWANIA
     mock_client.async_get_grades.return_value = []
+    mock_client.async_get_student_information.return_value = _uczen("Jan Kowalski")
     zdarzenia = []
     hass.bus.async_listen(EVENT_NOWY_WPIS_ZACHOWANIA, lambda e: zdarzenia.append(e.data))
     mock_client.async_get_zachowanie.return_value = _zachowanie(wpisy=[_wpis()])
@@ -455,7 +464,7 @@ async def test_zdarzenie_nowego_wpisu_zachowania(coordinator, mock_client, hass)
         wpisy=[_wpis(), _wpis("Inny komentarz")])
     coordinator.data = await coordinator._async_update_data()
     await hass.async_block_till_done()
-    assert zdarzenia == [_wpis("Inny komentarz")]
+    assert zdarzenia == [{"uczen": "Jan Kowalski", **_wpis("Inny komentarz")}]
     coordinator.data = await coordinator._async_update_data()
     await hass.async_block_till_done()
     assert len(zdarzenia) == 1
@@ -669,3 +678,97 @@ async def test_sensor_tematow_wlacza_pobieranie(hass, coordinator, mock_client):
     assert coordinator.data["oceny"] == []
     await s.async_will_remove_from_hass()
     assert coordinator.tematy_wlaczone is False
+
+
+KLUCZ_WIDZIANYCH = "librus_apix.widziane.test_123"
+
+
+def _zbierz(hass, *zdarzenia_typy):
+    zebrane = []
+    for typ in zdarzenia_typy:
+        hass.bus.async_listen(typ, lambda e: zebrane.append((e.event_type, e.data)))
+    return zebrane
+
+
+def _ustaw_dane(mock_client, oceny, wiadomosci, uwagi):
+    mock_client.async_get_student_information.return_value = _uczen("Jan Kowalski")
+    mock_client.async_get_grades.return_value = oceny
+    mock_client.async_get_messages.return_value = wiadomosci
+    mock_client.async_get_uwagi.return_value = (uwagi, False)
+
+
+def _wiadomosc(i):
+    return {"author": f"Autor {i}", "title": f"Temat {i}", "date": "2026-01-01", "href": f"/w/{i}"}
+
+
+@pytest.mark.asyncio
+async def test_widziane_wpisy_przetrwaja_restart(hass, hass_storage, mock_client):
+    """Po restarcie zdarzenia dostaja tylko wpisy dodane w czasie przestoju."""
+    from homeassistant.const import EVENT_HOMEASSISTANT_FINAL_WRITE
+    from custom_components.librus_apix.sensor import EVENT_NOWA_OCENA, EVENT_NOWA_UWAGA, EVENT_NOWA_WIADOMOSC
+
+    zebrane = _zbierz(hass, EVENT_NOWA_OCENA, EVENT_NOWA_UWAGA, EVENT_NOWA_WIADOMOSC)
+    _ustaw_dane(mock_client, [_ocena("Fizyka", "4")], [_wiadomosc(1)], [_uwaga(1)])
+    przed = LibrusDataUpdateCoordinator(hass, mock_client, "test_123")
+    await przed.async_wczytaj_widziane()
+    przed.data = await przed._async_update_data()
+    # Zatrzymanie HA wymusza zapis odlozony przez async_delay_save
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_FINAL_WRITE)
+    await hass.async_block_till_done()
+    assert KLUCZ_WIDZIANYCH in hass_storage
+
+    _ustaw_dane(
+        mock_client,
+        [_ocena("Fizyka", "4"), _ocena("Chemia", "5")],
+        [_wiadomosc(1), _wiadomosc(2)],
+        [_uwaga(1), _uwaga(2)],
+    )
+    po = LibrusDataUpdateCoordinator(hass, mock_client, "test_123")
+    await po.async_wczytaj_widziane()
+    po.data = await po._async_update_data()
+    await hass.async_block_till_done()
+
+    assert sorted((t, d.get("przedmiot") or d.get("temat") or d.get("tresc")) for t, d in zebrane) == [
+        (EVENT_NOWA_OCENA, "Chemia"),
+        (EVENT_NOWA_UWAGA, "Fikcyjna uwaga 2"),
+        (EVENT_NOWA_WIADOMOSC, "Temat 2"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_kategoria_bez_zapisu_dostaje_baze_bez_zdarzen(hass, hass_storage, mock_client):
+    """Kategoria nieobecna w zapisie (np. po aktualizacji) nie zalewa zdarzeniami."""
+    from custom_components.librus_apix.sensor import EVENT_NOWA_OCENA, EVENT_NOWA_WIADOMOSC
+
+    hass_storage[KLUCZ_WIDZIANYCH] = {
+        "version": 1,
+        "key": KLUCZ_WIDZIANYCH,
+        "data": {"oceny": [["Fizyka", "2025-10-01", "4"]]},
+    }
+    zebrane = _zbierz(hass, EVENT_NOWA_OCENA, EVENT_NOWA_WIADOMOSC)
+    _ustaw_dane(mock_client, [_ocena("Fizyka", "4"), _ocena("Chemia", "5")], [_wiadomosc(1)], [])
+    coord = LibrusDataUpdateCoordinator(hass, mock_client, "test_123")
+    await coord.async_wczytaj_widziane()
+    coord.data = await coord._async_update_data()
+    await hass.async_block_till_done()
+
+    assert [(t, d["przedmiot"]) for t, d in zebrane] == [(EVENT_NOWA_OCENA, "Chemia")]
+
+
+@pytest.mark.asyncio
+async def test_niepobrana_kategoria_nie_zalewa_po_pierwszym_pobraniu(hass, coordinator, mock_client):
+    """Gdy wiadomosci nie pobraly sie przy starcie, pierwsze udane pobranie to baza, nie zdarzenia."""
+    from custom_components.librus_apix.sensor import EVENT_NOWA_WIADOMOSC
+
+    zebrane = _zbierz(hass, EVENT_NOWA_WIADOMOSC)
+    _ustaw_dane(mock_client, [], None, [])
+    coordinator.data = await coordinator._async_update_data()
+    mock_client.async_get_messages.return_value = [_wiadomosc(1), _wiadomosc(2)]
+    coordinator.data = await coordinator._async_update_data()
+    await hass.async_block_till_done()
+    assert zebrane == []
+
+    mock_client.async_get_messages.return_value = [_wiadomosc(1), _wiadomosc(2), _wiadomosc(3)]
+    coordinator.data = await coordinator._async_update_data()
+    await hass.async_block_till_done()
+    assert [d["temat"] for _, d in zebrane] == ["Temat 3"]
