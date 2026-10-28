@@ -81,11 +81,18 @@ def _liczy_sie(ocena: dict) -> bool:
     return not ocena.get("zastapiona") and ocena.get("licz_do_sredniej") is not False
 
 
+def _procent(ocena: dict) -> float | None:
+    # Ocena z sekcji punktowej ma procent policzony z maksimum skali (np. 14 z 20)
+    if ocena.get("punktowa"):
+        return ocena.get("procent")
+    return procent_oceny(ocena.get("ocena", ""))
+
+
 def srednia_wazona(oceny: list[dict]) -> float | None:
     """Srednia wazona ocen 1-6 i literowych; waga 0/brak = 1."""
     suma = wagi = 0.0
     for o in oceny:
-        if not _liczy_sie(o):
+        if not _liczy_sie(o) or o.get("punktowa"):
             continue
         wartosc = wartosc_oceny(o.get("ocena", ""))
         if wartosc is None:
@@ -102,15 +109,18 @@ def srednia_procentowa(oceny: list[dict]) -> float | None:
     for o in oceny:
         if not _liczy_sie(o):
             continue
-        ocena = o.get("ocena", "")
-        if skala_oceny(ocena) == "punkty":
-            wartosci.append(procent_oceny(ocena))
+        procent = _procent(o)
+        if procent is not None:
+            wartosci.append(procent)
     return round(sum(wartosci) / len(wartosci), 2) if wartosci else None
 
 
-def biezacy_semestr(oceny_sem2_liczbowe: dict, oceny_sem2_opisowe: dict) -> int:
-    """2, jesli jakakolwiek lista ocen semestru 2 jest niepusta, inaczej 1."""
-    for slownik in (oceny_sem2_liczbowe, oceny_sem2_opisowe):
-        if any(slownik.values()):
+def biezacy_semestr(oceny_liczbowe: list, oceny_opisowe: list) -> int:
+    """2, jesli jakakolwiek lista ocen semestru 2 jest niepusta, inaczej 1.
+
+    Argumenty to listy slownikow per semestr z librus-apix (indeks 1 = semestr 2).
+    """
+    for semestry in (oceny_liczbowe, oceny_opisowe):
+        if len(semestry) > 1 and any(semestry[1].values()):
             return 2
     return 1

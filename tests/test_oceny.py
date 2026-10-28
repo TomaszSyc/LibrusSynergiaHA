@@ -17,7 +17,14 @@ def test_srednia_wazona(): assert srednia_wazona([s("5", 2), s("2"), s("1", licz
 def test_srednia_stare_dane(): assert srednia_wazona([{"ocena": "4"}, {"ocena": "3+"}]) == 3.75
 def test_srednia_pusta(): assert srednia_wazona([]) is None and srednia_procentowa([s("5")]) is None
 def test_srednia_procentowa(): assert srednia_procentowa([s("90"), s("7/10"), s("50%", zast=True), s("4")]) == 80.0
-def test_semestr(): assert (biezacy_semestr({}, {}), biezacy_semestr({"Fizyka": []}, {}), biezacy_semestr({"Fizyka": [object()]}, {}), biezacy_semestr({}, {"Plastyka": [object()]})) == (1, 1, 2, 2)
+def test_semestr():
+    s1 = {"Fizyka": [object()]}
+    assert biezacy_semestr([s1, {}], [s1, {}]) == 1
+    assert biezacy_semestr([{}, {"Fizyka": []}], [{}, {}]) == 1
+    assert biezacy_semestr([{}, {"Fizyka": [object()]}], [{}, {}]) == 2
+    assert biezacy_semestr([{}, {}], [{}, {"Plastyka": [object()]}]) == 2
+    # Niepelna odpowiedz biblioteki to semestr 1, nie wyjatek
+    assert biezacy_semestr([], []) == 1
 
 
 def test_waga_zero_i_dzielenie_przez_zero():

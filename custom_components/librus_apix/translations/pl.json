@@ -12,6 +12,7 @@
     },
     "error": {
       "cannot_connect": "Nie udało się połączyć z Librusem. Sprawdź swoje dane logowania.",
+      "no_access": "To konto nie ma dostępu do dziennika Synergia ani do wiadomości (Librus pokazuje „Brak dostępu”), np. konto przedszkolne.",
       "unknown": "Wystąpił nieoczekiwany błąd"
     },
     "abort": {
@@ -24,8 +25,29 @@
         "title": "Ustawienia Librus APIX",
         "description": "Skonfiguruj dodatkowe opcje działania integracji.",
         "data": {
+          "fetch_messages_count": "Liczba pobieranych wiadomości z Librusa (im więcej, tym integracja dłużej się uruchamia, zalecane ok. 10, max 25)",
           "fetch_messages_content": "Pobieraj pełną treść wiadomości (Oznacza je jako przeczytane w systemie Librus!)",
-          "liczba_wiadomosci": "Liczba wiadomości"
+          "days_before_exam_study": "Ile dni przed sprawdzianem przypominać o nauce? (0 = wyłączone)",
+          "scan_interval_school_minutes": "Co ile minut odpytywać Librusa w dni robocze 7:00–16:00 (domyślnie 15; większa wartość = mniej zapytań)",
+          "scan_interval_minutes": "Co ile minut odpytywać Librusa poza tymi godzinami i w weekendy (domyślnie 120)"
+        }
+      },
+      "ai": {
+        "title": "Ustawienia Sztucznej Inteligencji (AI)",
+        "description": "Skonfiguruj opcje podsumowań AI i niestandardowe prompty.",
+        "data": {
+          "ai_summary_enabled": "Włącz moduł Asystenta AI (Podsumowania ocen, frekwencji oraz wiadomości)",
+          "ai_agent_id": "ID usługi asystenta AI (np. conversation.openai, conversation.home_assistant)",
+          "ai_prompt_messages_parent": "Niestandardowy Prompt AI (Wiadomości - Rodzic)",
+          "ai_prompt_messages_student": "Niestandardowy Prompt AI (Wiadomości - Uczeń)",
+          "ai_prompt_weekly_parent": "Niestandardowy Prompt AI (Podsumowanie Tygodnia - Rodzic)",
+          "ai_prompt_weekly_student": "Niestandardowy Prompt AI (Podsumowanie Tygodnia - Uczeń)"
+        },
+        "data_description": {
+          "ai_prompt_messages_parent": "Dostępne zmienne (użyj w nawiasach klamrowych): imie, oceny, frekwencja, nieobecnosci, zadania, wiadomosci",
+          "ai_prompt_messages_student": "Dostępne zmienne (użyj w nawiasach klamrowych): imie, oceny, frekwencja, nieobecnosci, zadania, wiadomosci",
+          "ai_prompt_weekly_parent": "Dostępne zmienne (użyj w nawiasach klamrowych): imie, oceny, frekwencja, nieobecnosci, zadania, wiadomosci",
+          "ai_prompt_weekly_student": "Dostępne zmienne (użyj w nawiasach klamrowych): imie, oceny, frekwencja, nieobecnosci, zadania, wiadomosci"
         }
       }
     }

@@ -7,10 +7,24 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import selector
+from librus_apix.exceptions import TokenError
 
-from librus_apix.client import new_client
-
-from .const import CONF_LICZBA_WIADOMOSCI, DEFAULT_MESSAGES_COUNT, DOMAIN
+from . import nowy_klient
+from .const import (
+    CONF_SCAN_INTERVAL_OTHER,
+    CONF_SCAN_INTERVAL_SCHOOL,
+    DEFAULT_SCAN_INTERVAL_OTHER,
+    DEFAULT_SCAN_INTERVAL_SCHOOL,
+    DOMAIN,
+    liczba_wiadomosci,
+)
+from .ai_prompts import (
+    DEFAULT_PROMPT_WEEKLY_PARENT,
+    DEFAULT_PROMPT_WEEKLY_STUDENT,
+    DEFAULT_PROMPT_MESSAGES_PARENT,
+    DEFAULT_PROMPT_MESSAGES_STUDENT,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,17 +45,47 @@ async def validate_input(hass: HomeAssistant, data: dict):
     try:
         import asyncio
         loop = asyncio.get_running_loop()
-        client = await loop.run_in_executor(None, new_client)
+        client = await loop.run_in_executor(None, nowy_klient)
         token = await loop.run_in_executor(None, client.get_token, username, password)
         
         if not token:
             raise ValueError("Authentication failed")
-            
-        return {"title": f"Librus APIX ({username})"}
-    
     except Exception as ex:
         _LOGGER.error("Authentication error: %s", ex)
         raise ValueError("Cannot connect") from ex
+
+    # Dostep do dziennika (#48): konto np. przedszkolne loguje sie poprawnie,
+    # ale Librus pokazuje "Brak dostepu". Gdy nie ma dziennika, wystarcza
+    # dostep do wiadomosci - integracja pominie niedostepne moduly.
+    if not await loop.run_in_executor(None, _ma_dostep, client):
+        raise PermissionError("Konto nie ma dostępu do dziennika ani wiadomości")
+
+    return {"title": f"Librus APIX ({username})"}
+
+
+def _ma_dostep(client) -> bool:
+    """Czy konto widzi dziennik (informacje o uczniu) albo chociaz wiadomosci."""
+    from librus_apix.messages import get_received
+    from librus_apix.student_information import get_student_information
+
+    try:
+        get_student_information(client)
+        return True
+    except TokenError as ex:
+        _LOGGER.warning("Konto nie ma dostępu do dziennika (Librus: Brak dostępu): %s", ex)
+    except Exception as ex:
+        # Inny blad (np. zmiana strony) nie blokuje dodania konta
+        _LOGGER.debug("Nie udało się sprawdzić dostępu do dziennika: %s", ex)
+        return True
+    try:
+        get_received(client, 0)
+        return True
+    except TokenError as ex:
+        _LOGGER.warning("Konto nie ma też dostępu do wiadomości: %s", ex)
+        return False
+    except Exception as ex:
+        _LOGGER.debug("Nie udało się sprawdzić dostępu do wiadomości: %s", ex)
+        return True
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -60,6 +104,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 info = await validate_input(self.hass, user_input)
             except ValueError:
                 errors["base"] = "cannot_connect"
+            except PermissionError:
+                errors["base"] = "no_access"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -87,30 +133,87 @@ class LibrusApixOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
         self.entry = config_entry
+        self.options = dict(config_entry.options)
 
     async def async_step_init(
         self, user_input: dict | None = None
     ) -> FlowResult:
-        """Manage the options."""
+        """Manage general options."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            self.options.update(user_input)
+            # Stary klucz forka zastapiony przez fetch_messages_count
+            self.options.pop("liczba_wiadomosci", None)
+            return await self.async_step_ai()
 
         schema = vol.Schema(
             {
+                vol.Optional(
+                    "fetch_messages_count",
+                    default=min(liczba_wiadomosci(self.entry.options), 25),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=25)),
                 vol.Optional(
                     "fetch_messages_content",
                     default=self.entry.options.get("fetch_messages_content", False),
                 ): bool,
                 vol.Optional(
-                    CONF_LICZBA_WIADOMOSCI,
-                    default=self.entry.options.get(
-                        CONF_LICZBA_WIADOMOSCI, DEFAULT_MESSAGES_COUNT
-                    ),
-                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=50)),
+                    "days_before_exam_study",
+                    default=self.entry.options.get("days_before_exam_study", 2),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=7)),
+                vol.Optional(
+                    CONF_SCAN_INTERVAL_SCHOOL,
+                    default=self.entry.options.get(CONF_SCAN_INTERVAL_SCHOOL, DEFAULT_SCAN_INTERVAL_SCHOOL),
+                ): vol.All(vol.Coerce(int), vol.Range(min=15, max=240)),
+                vol.Optional(
+                    CONF_SCAN_INTERVAL_OTHER,
+                    default=self.entry.options.get(CONF_SCAN_INTERVAL_OTHER, DEFAULT_SCAN_INTERVAL_OTHER),
+                ): vol.All(vol.Coerce(int), vol.Range(min=30, max=720)),
             }
         )
 
         return self.async_show_form(
             step_id="init",
+            data_schema=schema,
+            last_step=False,
+        )
+
+    async def async_step_ai(
+        self, user_input: dict | None = None
+    ) -> FlowResult:
+        """Manage AI options."""
+        if user_input is not None:
+            self.options.update(user_input)
+            return self.async_create_entry(title="", data=self.options)
+
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    "ai_summary_enabled",
+                    default=self.entry.options.get("ai_summary_enabled", False),
+                ): bool,
+                vol.Optional(
+                    "ai_agent_id",
+                    default=self.entry.options.get("ai_agent_id", "conversation.home_assistant"),
+                ): str,
+                vol.Optional(
+                    "ai_prompt_messages_parent",
+                    default=self.entry.options.get("ai_prompt_messages_parent", DEFAULT_PROMPT_MESSAGES_PARENT),
+                ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
+                vol.Optional(
+                    "ai_prompt_messages_student",
+                    default=self.entry.options.get("ai_prompt_messages_student", DEFAULT_PROMPT_MESSAGES_STUDENT),
+                ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
+                vol.Optional(
+                    "ai_prompt_weekly_parent",
+                    default=self.entry.options.get("ai_prompt_weekly_parent", DEFAULT_PROMPT_WEEKLY_PARENT),
+                ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
+                vol.Optional(
+                    "ai_prompt_weekly_student",
+                    default=self.entry.options.get("ai_prompt_weekly_student", DEFAULT_PROMPT_WEEKLY_STUDENT),
+                ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="ai",
             data_schema=schema,
         )

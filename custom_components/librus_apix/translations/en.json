@@ -12,6 +12,7 @@
     },
     "error": {
       "cannot_connect": "Failed to connect to Librus. Please check your credentials.",
+      "no_access": "This account has no access to the Synergia school register or messages (Librus shows 'Brak dostępu'), e.g. a preschool account.",
       "unknown": "Unexpected error occurred"
     },
     "abort": {
@@ -24,8 +25,29 @@
         "title": "Librus APIX Settings",
         "description": "Configure additional options for the integration.",
         "data": {
+          "fetch_messages_count": "Number of messages to fetch from Librus (higher number slows down startup, recommended ~10, max 25)",
           "fetch_messages_content": "Fetch full message content (Marks them as read in Librus system!)",
-          "liczba_wiadomosci": "Number of messages"
+          "days_before_exam_study": "How many days before exam to remind about studying? (0 = disabled)",
+          "scan_interval_school_minutes": "Polling interval on school days 7:00-16:00, in minutes (default 15, fewer requests to Librus with a higher value)",
+          "scan_interval_minutes": "Polling interval at other times and on weekends, in minutes (default 120)"
+        }
+      },
+      "ai": {
+        "title": "Artificial Intelligence (AI) Settings",
+        "description": "Configure AI summaries and custom prompts.",
+        "data": {
+          "ai_summary_enabled": "Enable AI Assistant module (Summaries of grades, attendance and messages)",
+          "ai_agent_id": "AI Assistant Service ID (e.g. conversation.openai)",
+          "ai_prompt_messages_parent": "Custom AI Prompt (Messages - Parent)",
+          "ai_prompt_messages_student": "Custom AI Prompt (Messages - Student)",
+          "ai_prompt_weekly_parent": "Custom AI Prompt (Weekly Summary - Parent)",
+          "ai_prompt_weekly_student": "Custom AI Prompt (Weekly Summary - Student)"
+        },
+        "data_description": {
+          "ai_prompt_messages_parent": "Available variables (use curly braces): imie, oceny, frekwencja, nieobecnosci, zadania, wiadomosci",
+          "ai_prompt_messages_student": "Available variables (use curly braces): imie, oceny, frekwencja, nieobecnosci, zadania, wiadomosci",
+          "ai_prompt_weekly_parent": "Available variables (use curly braces): imie, oceny, frekwencja, nieobecnosci, zadania, wiadomosci",
+          "ai_prompt_weekly_student": "Available variables (use curly braces): imie, oceny, frekwencja, nieobecnosci, zadania, wiadomosci"
         }
       }
     }

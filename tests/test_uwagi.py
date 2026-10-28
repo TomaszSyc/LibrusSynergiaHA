@@ -1,188 +1,91 @@
-"""Testy parsera strony uwag."""
+"""Testy uwag (gateway API Notes) - dane fikcyjne."""
 
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from librus_apix.exceptions import TokenError
 
-from custom_components.librus_apix.uwagi import UWAGI_URL, parsuj_uwagi, pobierz_uwagi
+from custom_components.librus_apix.__init__ import LibrusApiClient, _map_notes
+from custom_components.librus_apix.sensor import EVENT_NOWA_UWAGA, LibrusUwagiSensor
 
-FIX = Path(__file__).parent / "fixtures"
-
-
-def _wczytaj(nazwa):
-    return (FIX / nazwa).read_text(encoding="utf-8")
-
-
-def test_uklad_tabelaryczny_nietypowa_kolejnosc():
-    uwagi, flaga = parsuj_uwagi(_wczytaj("uwagi_tabela.html"))
-    assert flaga is False
-    assert len(uwagi) == 2
-    # od najnowszej
-    assert uwagi[0]["data"] == "2025-05-20"
-    assert uwagi[0]["nauczyciel"] == "Jan Kowalski"
-    assert uwagi[0]["rodzaj"] == "Negatywna"
-    assert uwagi[0]["kategoria"] == "Zachowanie na lekcji"
-    assert uwagi[0]["tresc"] == "Rozmowa podczas lekcji"
-    assert uwagi[1]["tresc"] == "Pomoc kolegom przy projekcie"
-    assert all(len(u["id"]) == 12 for u in uwagi)
+NOTES = [
+    {"Id": 1, "Date": "2026-09-14", "Positive": 1, "Text": "Pomoc koledze w lekcji.",
+     "Category": {"Id": 10}, "Teacher": {"Id": 100}, "Public": True},
+    {"Id": 2, "Date": "2026-10-01", "Positive": 0, "Text": " Rozmowy na lekcji. ",
+     "Category": {"Id": 11}, "Teacher": {"Id": 101}, "Public": True},
+    {"Id": 3, "Date": "2026-10-05", "Positive": 2, "Text": "Brak stroju.",
+     "Category": {"Id": 12}, "Teacher": {"Id": 999}, "Public": True},
+]
+KATEGORIE = {10: "pozytywna", 11: "negatywna", 12: "neutralna"}
+OSOBY = {100: "Kowalska Anna", 101: "Nowak Jan"}
 
 
-def test_uklad_kart():
-    uwagi, flaga = parsuj_uwagi(_wczytaj("uwagi_karty.html"))
-    assert flaga is False
-    assert [u["data"] for u in uwagi] == ["03.04.2025", "12.01.2025"]
-    assert uwagi[1]["rodzaj"] == "Pochwała"
-    assert uwagi[1]["tresc"] == "Aktywny udział w zajęciach"
+def test_mapowanie_uwag():
+    uwagi = _map_notes(NOTES, KATEGORIE, OSOBY)
+    assert [u["id"] for u in uwagi] == [3, 2, 1]  # od najnowszej
+    neutralna, negatywna, pozytywna = uwagi
+    assert pozytywna["rodzaj"] == "pozytywna"
+    assert pozytywna["nauczyciel"] == "Kowalska Anna"
+    assert negatywna["rodzaj"] == "negatywna"
+    assert negatywna["tresc"] == "Rozmowy na lekcji."
+    assert neutralna["rodzaj"] == "neutralna"
+    assert neutralna["nauczyciel"] == ""  # nieznany nauczyciel
 
 
-def test_brak_uwag():
-    assert parsuj_uwagi(_wczytaj("uwagi_brak.html")) == ([], False)
+def _lib(payloads):
+    lib = MagicMock()
+    lib.BASE_URL = "https://synergia.librus.pl"
+    lib.cookies = {}
+    lib.refresh_oauth.return_value = "oauth"
+    lib.get.side_effect = lambda url: MagicMock(json=MagicMock(return_value=payloads[url.rsplit("2.0/", 1)[1]]))
+    return lib
 
 
-def test_nieznana_tabela_bez_brak_uwag():
-    assert parsuj_uwagi(_wczytaj("uwagi_nieznane.html")) == ([], True)
+def _client(lib):
+    client = LibrusApiClient("user", "pass")
+    client._client = lib
+    client._token = "token"
+    return client
 
 
-def test_strona_bez_tabel_i_bez_brak_uwag():
-    assert parsuj_uwagi("<html><body><p>cokolwiek</p></body></html>") == ([], True)
+@pytest.mark.asyncio
+async def test_pobieranie_uwag():
+    lib = _lib({
+        "Notes": {"Notes": NOTES},
+        "Notes/Categories": {"Categories": [{"Id": k, "CategoryName": v} for k, v in KATEGORIE.items()]},
+        "Users": {"Users": [{"Id": 100, "FirstName": "Anna", "LastName": "Kowalska"}]},
+    })
+    uwagi = await _client(lib).async_get_notes()
+    assert len(uwagi) == 3
+    assert uwagi[2]["nauczyciel"] == "Kowalska Anna"
+    assert uwagi[1]["kategoria"] == "negatywna"
 
 
-def test_brak_dostepu():
-    with pytest.raises(TokenError):
-        parsuj_uwagi(_wczytaj("uwagi_brak_dostepu.html"))
+@pytest.mark.asyncio
+async def test_brak_uwag_i_blad():
+    assert await _client(_lib({"Notes": {"Notes": []}})).async_get_notes() == []
+    assert await _client(_lib({"Notes": {"Status": "Error"}})).async_get_notes() is None
 
 
-def test_identyczne_uwagi_maja_rozne_id():
-    wiersz = (
-        "<tr><td>2025-02-01</td><td>Anna Nowak</td><td>Pochwała</td>"
-        "<td>Pomoc</td><td>Pomoc kolegom przy projekcie</td></tr>"
-    )
-    html = (
-        '<table class="decorated"><thead><tr><th>Data</th><th>Nauczyciel</th>'
-        "<th>Rodzaj</th><th>Kategoria</th><th>Treść</th></tr></thead><tbody>"
-        + wiersz * 2
-        + "</tbody></table>"
-    )
-    uwagi, flaga = parsuj_uwagi(html)
-    assert flaga is False
-    assert len(uwagi) == 2
-    assert uwagi[0]["id"] != uwagi[1]["id"]
-    # stabilne między wywołaniami
-    assert {u["id"] for u in parsuj_uwagi(html)[0]} == {u["id"] for u in uwagi}
+def test_czujnik_uwag():
+    coordinator = MagicMock()
+    coordinator.data = {"uwagi": _map_notes(NOTES, KATEGORIE, OSOBY)}
+    sensor = LibrusUwagiSensor(coordinator, MagicMock(entry_id="e1"))
+    assert sensor.native_value == 3
+    attrs = sensor.extra_state_attributes
+    assert (attrs["liczba_pozytywnych"], attrs["liczba_negatywnych"], attrs["liczba_neutralnych"]) == (1, 1, 1)
+    assert attrs["ostatnia"]["id"] == 3
 
 
-def test_sortowanie_mieszane_formaty_i_nieparsowalne_na_koncu():
-    def w(d, t):
-        return f"<tr><td>{d}</td><td>X</td><td>Y</td><td>Z</td><td>{t}</td></tr>"
+async def test_zdarzenie_nowej_uwagi(hass):
+    from custom_components.librus_apix.sensor import LibrusDataUpdateCoordinator
 
-    html = (
-        '<table class="decorated"><thead><tr><th>Data</th><th>Nauczyciel</th>'
-        "<th>Rodzaj</th><th>Kategoria</th><th>Treść</th></tr></thead><tbody>"
-        + w("brak", "a")
-        + w("01.02.2025", "b")
-        + w("2025-03-01", "c")
-        + w("niedziela", "d")
-        + "</tbody></table>"
-    )
-    uwagi, _ = parsuj_uwagi(html)
-    assert [u["tresc"] for u in uwagi] == ["c", "b", "a", "d"]
-
-
-def test_pobierz_uwagi():
-    client = MagicMock()
-    client.get.return_value.text = _wczytaj("uwagi_brak.html")
-    assert pobierz_uwagi(client) == ([], False)
-    client.get.assert_called_once_with(UWAGI_URL)
-    assert UWAGI_URL == "https://synergia.librus.pl/uwagi"
-
-
-def test_naglowek_w_td_w_thead():
-    uwagi, flaga = parsuj_uwagi(_wczytaj("uwagi_thead_td.html"))
-    assert flaga is False
-    assert len(uwagi) == 1
-    assert uwagi[0]["data"] == "2025-03-01"
-    assert uwagi[0]["nauczyciel"] == "Jan Kowalski"
-    assert uwagi[0]["kategoria"] == "Pozytywna"
-    assert uwagi[0]["tresc"] == "Pomoc kolegom"
-
-
-def test_naglowek_w_td_pierwszy_wiersz_bez_thead():
-    html = (
-        '<table class="decorated"><tr><td>Data</td><td>Treść</td></tr>'
-        "<tr><td>2025-03-01</td><td>Pomoc kolegom</td></tr></table>"
-    )
-    uwagi, flaga = parsuj_uwagi(html)
-    assert flaga is False and [u["tresc"] for u in uwagi] == ["Pomoc kolegom"]
-
-
-# --- zachowanie ---
-
-from custom_components.librus_apix.uwagi import parsuj_zachowanie, pobierz_zachowanie  # noqa: E402
-
-_PUSTA = {"ocena": None, "propozycja": False}
-
-
-def test_zachowanie_pusty():
-    w = parsuj_zachowanie(_wczytaj("zachowanie_pusty.html"))
-    assert w == {"okres_1": _PUSTA, "okres_2": _PUSTA, "roczna": _PUSTA, "wpisy": []}
-
-
-def test_zachowanie_okres1_wpisy():
-    w = parsuj_zachowanie(_wczytaj("zachowanie_okres1.html"))
-    assert w["okres_1"] == _PUSTA and w["roczna"] == _PUSTA
-    assert w["wpisy"] == [
-        {"okres": 1, "ocena": "nb", "rodzaj": "negatywne", "data": "2025-03-10",
-         "nauczyciel": "Kowalski Jan", "komentarz": "Rozmowa podczas lekcji"},
-        {"okres": 1, "ocena": "pb", "rodzaj": "pozytywne", "data": "2025-03-12",
-         "nauczyciel": "Kowalski Jan", "komentarz": "Pomoc przy organizacji wycieczki"},
-    ]
-
-
-def test_zachowanie_propozycja():
-    w = parsuj_zachowanie(_wczytaj("zachowanie_propozycja.html"))
-    assert w["okres_1"] == {"ocena": "bardzo dobre", "propozycja": True}
-    assert w["okres_2"] == _PUSTA
-    assert w["roczna"] == _PUSTA
-
-
-def test_zachowanie_pelny():
-    w = parsuj_zachowanie(_wczytaj("zachowanie_pelny.html"))
-    assert w["okres_1"] == {"ocena": "dobre", "propozycja": False}
-    assert w["roczna"] == {"ocena": "bardzo dobre", "propozycja": False}
-    assert [(x["okres"], x["rodzaj"]) for x in w["wpisy"]] == [
-        (1, "negatywne"), (1, "pozytywne"), (2, "neutralne")]
-    assert w["wpisy"][2]["komentarz"] == ""
-
-
-def test_zachowanie_brak_wiersza():
-    w = parsuj_zachowanie(_wczytaj("zachowanie_brak_wiersza.html"))
-    assert w == {"okres_1": _PUSTA, "okres_2": _PUSTA, "roczna": _PUSTA, "wpisy": []}
-
-
-def test_zachowanie_brak_dostepu():
-    with pytest.raises(TokenError):
-        parsuj_zachowanie(_wczytaj("uwagi_brak_dostepu.html"))
-
-
-def test_pobierz_zachowanie():
-    client = MagicMock()
-    client.post.return_value.text = _wczytaj("zachowanie_pelny.html")
-    assert pobierz_zachowanie(client)["roczna"]["ocena"] == "bardzo dobre"
-    client.post.assert_called_once_with(
-        client.GRADES_URL, data={"zmiany_logowanie_wszystkie": "1"})
-
-
-def test_zachowanie_wieloliniowy_komentarz():
-    html = (
-        '<table class="decorated stretch"><tbody><tr class="bolded line1"><td></td>'
-        '<td>Zachowanie</td><td colspan="2"><span class="grade-box positive-behaviour">'
-        '<a href="/x" title="Data wystawienia: 2025-03-12<br>Dodał: Kowalski Jan'
-        '<br>Komentarz: Pomoc przy wycieczce<br>oraz przy projekcie">pb</a></span></td>'
-        '<td class="center">dobre</td><td colspan="2"></td><td class="center" colspan="3">'
-        "dobre</td></tr></tbody></table>"
-    )
-    w = parsuj_zachowanie(html)
-    assert w["wpisy"][0]["komentarz"] == "Pomoc przy wycieczce oraz przy projekcie"
-    assert w["wpisy"][0]["nauczyciel"] == "Kowalski Jan"
+    coord = LibrusDataUpdateCoordinator(hass, MagicMock())
+    stare = _map_notes(NOTES[:2], KATEGORIE, OSOBY)
+    coord._seen_note_ids = {u["id"] for u in stare}
+    zdarzenia = []
+    hass.bus.async_listen(EVENT_NOWA_UWAGA, lambda e: zdarzenia.append(e.data))
+    coord._fire_note_events(_map_notes(NOTES, KATEGORIE, OSOBY), "Jan Testowy")
+    await hass.async_block_till_done()
+    assert len(zdarzenia) == 1
+    assert zdarzenia[0]["rodzaj"] == "neutralna"
+    assert zdarzenia[0]["uczen"] == "Jan Testowy"

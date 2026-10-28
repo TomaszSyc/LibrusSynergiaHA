@@ -15,6 +15,33 @@ from .sensor import _device_info
 
 _LOGGER = logging.getLogger(__name__)
 
+# Strefa ladowana raz przy imporcie modulu (w executorze HA) - ZoneInfo przy
+# pierwszym uzyciu czyta plik, co w petli zdarzen HA zglasza jako blokujace.
+_STREFA_PL = zoneinfo.ZoneInfo("Europe/Warsaw")
+
+
+def _biezace_lub_nastepne(events: List[CalendarEvent], now: datetime) -> CalendarEvent | None:
+    """Trwajace wydarzenie albo, gdy zadne nie trwa, najblizsze nadchodzace.
+
+    Wydarzenie trwa do swojego konca, wiec liczy sie czas zakonczenia, a nie
+    rozpoczecia - inaczej encja nigdy nie bylaby w stanie "on".
+    """
+    aktualne = [e for e in events if e.end_datetime_local > now]
+    if not aktualne:
+        return None
+    return min(aktualne, key=lambda e: e.start_datetime_local)
+
+
+def _w_zakresie(
+    events: List[CalendarEvent], start_date: datetime, end_date: datetime
+) -> List[CalendarEvent]:
+    """Wydarzenia, ktore zachodza na zadany zakres (rowniez rozpoczete wczesniej)."""
+    return [
+        e for e in events
+        if e.start_datetime_local < end_date and e.end_datetime_local > start_date
+    ]
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -49,16 +76,12 @@ class LibrusTimetableCalendar(CoordinatorEntity, CalendarEntity):
 
     @property
     def event(self) -> CalendarEvent | None:
-        """Zwraca nastepne nadchodzace wydarzenie."""
+        """Zwraca trwajace lub najblizsze nadchodzace wydarzenie."""
         events = self._get_events()
         if not events:
             return None
             
-        now = datetime.now(zoneinfo.ZoneInfo("Europe/Warsaw"))
-        future_events = [e for e in events if e.start_datetime_local >= now]
-        if future_events:
-            return sorted(future_events, key=lambda e: e.start_datetime_local)[0]
-        return None
+        return _biezace_lub_nastepne(events, datetime.now(_STREFA_PL))
 
     def _get_events(self) -> List[CalendarEvent]:
         """Pobiera i formatuje wydarzenia z koordynatora."""
@@ -66,7 +89,7 @@ class LibrusTimetableCalendar(CoordinatorEntity, CalendarEntity):
         data = self.coordinator.data or {}
         plan = data.get("plan_lekcji", [])
         
-        tz = zoneinfo.ZoneInfo("Europe/Warsaw")
+        tz = _STREFA_PL
         
         for day in plan:
             lekcje = day.get("lekcje", [])
@@ -129,11 +152,7 @@ class LibrusTimetableCalendar(CoordinatorEntity, CalendarEntity):
         self, hass: HomeAssistant, start_date: datetime, end_date: datetime
     ) -> List[CalendarEvent]:
         """Zwraca wydarzenia dla danego zakresu dat."""
-        events = self._get_events()
-        return [
-            e for e in events 
-            if e.start_datetime_local >= start_date and e.start_datetime_local < end_date
-        ]
+        return _w_zakresie(self._get_events(), start_date, end_date)
 
 
 class LibrusScheduleCalendar(CoordinatorEntity, CalendarEntity):
@@ -158,16 +177,15 @@ class LibrusScheduleCalendar(CoordinatorEntity, CalendarEntity):
         if not events:
             return None
             
-        today = date.today()
-        future_events = [e for e in events if e.start >= today]
-        if future_events:
-            return sorted(future_events, key=lambda e: e.start)[0]
-        return None
+        return _biezace_lub_nastepne(events, datetime.now(_STREFA_PL))
 
     def _get_events(self) -> List[CalendarEvent]:
         events = []
         data = self.coordinator.data or {}
         terminarz = data.get("terminarz", [])
+        
+        plan = data.get("plan_lekcji", [])
+        tz = _STREFA_PL
         
         for ev in terminarz:
             try:
@@ -177,10 +195,42 @@ class LibrusScheduleCalendar(CoordinatorEntity, CalendarEntity):
                     
                 dt_start = datetime.strptime(ev_data, "%Y-%m-%d").date()
                 dt_end = dt_start + timedelta(days=1)
+                is_all_day = True
                 
                 przedmiot = ev.get("przedmiot", "")
                 tytul = ev.get("tytul", "")
                 szczegoly = ev.get("szczegoly", "")
+                numer_lekcji = ev.get("numer_lekcji")
+
+                # Szukamy powiazanej lekcji w planie, aby pobrac dokladne godziny:
+                # 1. Po przypisanym zdarzeniu i nazwie przedmiotu (najpewniejsze)
+                # 2. Po numerze lekcji
+                dopasowana_lekcja = None
+                for day in plan:
+                    if day.get("data") == ev_data:
+                        lekcje_dnia = day.get("lekcje", [])
+                        if tytul and przedmiot:
+                            p_lower = przedmiot.strip().lower()
+                            for lk in lekcje_dnia:
+                                if lk.get("zdarzenie") == tytul and lk.get("przedmiot"):
+                                    l_lower = lk["przedmiot"].strip().lower()
+                                    if p_lower in l_lower or l_lower in p_lower:
+                                        dopasowana_lekcja = lk
+                                        break
+                        if not dopasowana_lekcja and numer_lekcji and numer_lekcji != "unknown":
+                            for lk in lekcje_dnia:
+                                if str(lk.get("numer")) == str(numer_lekcji):
+                                    dopasowana_lekcja = lk
+                                    break
+                        break
+
+                if dopasowana_lekcja:
+                    godzina_od = dopasowana_lekcja.get("godzina_od")
+                    godzina_do = dopasowana_lekcja.get("godzina_do")
+                    if godzina_od and godzina_do and "??" not in godzina_od and "??" not in godzina_do:
+                        dt_start = datetime.strptime(f"{ev_data} {godzina_od}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
+                        dt_end = datetime.strptime(f"{ev_data} {godzina_do}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
+                        is_all_day = False
                 
                 summary = f"[{przedmiot}] {tytul}" if przedmiot else tytul
                 
@@ -205,10 +255,4 @@ class LibrusScheduleCalendar(CoordinatorEntity, CalendarEntity):
     async def async_get_events(
         self, hass: HomeAssistant, start_date: datetime, end_date: datetime
     ) -> List[CalendarEvent]:
-        events = self._get_events()
-        start_d = start_date.date()
-        end_d = end_date.date()
-        return [
-            e for e in events 
-            if e.start >= start_d and e.start < end_d
-        ]
+        return _w_zakresie(self._get_events(), start_date, end_date)

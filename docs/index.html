@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Librus Synergia HA – Kreator Dashboardu & Narzędzia v3.0</title>
+  <meta name="description" content="Oficjalna strona integracji Librus Synergia dla Home Assistant z interaktywnym generatorem paneli Lovelace, podglądem na żywo, kreatorem automatyzacji powiadomień oraz promptów AI.">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
+</head>
+<body>
+
+  <!-- Nawigacja -->
+  <header class="navbar">
+    <div class="nav-container">
+      <a href="#" class="brand">
+        <span class="brand-icon">🎓</span>
+        <span class="brand-title">Librus Synergia HA</span>
+        <span class="brand-badge">v3.0.3</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#nowosci" class="nav-link">Nowości v3.0</a>
+        <a href="#generator" class="nav-link">Generator Panelu</a>
+        <a href="#automatyzacje" class="nav-link">Powiadomienia</a>
+        <a href="#prompty" class="nav-link">Prompty AI</a>
+        <a href="#faq" class="nav-link">FAQ & Pomoc</a>
+        <a href="https://github.com/procaktomasz/LibrusSynergiaHA" target="_blank" rel="noopener noreferrer" class="btn-github">
+          <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+          <span>GitHub</span>
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-container">
+      <div class="pill-tag">
+        <span>✨ Wersja 3.0.3 już dostępna</span>
+      </div>
+      <h1 class="hero-title">
+        Inteligentny Asystent Szkolny <br>
+        dla <span class="gradient-text">Home Assistant</span>
+      </h1>
+      <p class="hero-description">
+        Monitoruj oceny, frekwencję, plan lekcji z zastępstwami, uwagi oraz wiadomości z Librus Synergia. 
+        Zintegruj podsumowania Sztucznej Inteligencji i wygeneruj gotowy panel Lovelace w kilka sekund bez pisania YAML-a!
+      </p>
+      <div class="hero-actions">
+        <a href="#generator" class="btn-primary">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          Kreator Dashboardu & Podgląd
+        </a>
+        <a href="#automatyzacje" class="btn-secondary">
+          <span>⚡ Generator Powiadomień</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Nowości v3.0 -->
+  <section id="nowosci" class="features">
+    <div class="section-header">
+      <span class="section-badge">Przełomowe funkcje</span>
+      <h2 class="section-title">Co nowego w wersji 3.0?</h2>
+      <p class="section-subtitle">Stworzona przez społeczność, dopracowana pod kątem niezawodności i nowoczesnego wyglądu.</p>
+    </div>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon-wrapper purple">🤖</div>
+        <h3 class="feature-title">Asystent AI</h3>
+        <p class="feature-text">
+          Generowanie spersonalizowanych raportów z postępów na koniec tygodnia (osobno dla rodzica i ucznia) oraz zwięzłych streszczeń wiadomości ze szkoły.
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon-wrapper green">🎮</div>
+        <h3 class="feature-title">Gamifikacja Nauki (To-Do)</h3>
+        <p class="feature-text">
+          Automatyczna interaktywna lista przygotowań przed sprawdzianami. Czujnik "Nauka Odrobiona" pozwala zablokować konsolę lub TV dopóki zadania nie zostaną zaliczone!
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon-wrapper">🧠</div>
+        <h3 class="feature-title">Adaptacyjny Cache</h3>
+        <p class="feature-text">
+          Inteligentny harmonogram odpytywania Librusa i trwały cache wiadomości chroniący przed porannymi błędami <code>500 Server Error</code> serwerów dziennika.
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon-wrapper amber">⚡</div>
+        <h3 class="feature-title">Błyskawiczne Zdarzenia</h3>
+        <p class="feature-text">
+          Natywne zdarzenia Home Assistant dla nowych ocen, uwag, wiadomości i zadań. Koniec ze skomplikowanymi szablonami w automatyzacjach powiadomień na telefon.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Generator Panelu + Podgląd na Żywo -->
+  <section id="generator" class="generator-section">
+    <div class="section-container">
+      <div class="section-header">
+        <span class="section-badge">Interaktywny Kreator</span>
+        <h2 class="section-title">Kreator Dashboardu Lovelace</h2>
+        <p class="section-subtitle">Dodaj uczniów, zaznacz elementy, które chcesz mieć na panelu, i skopiuj gotowy kod: cały pulpit, pojedynczy widok albo każdą kartę osobno.</p>
+      </div>
+
+      <div class="generator-dual-layout">
+        <div class="generator-box">
+          <!-- Krok 1: Uczniowie -->
+          <div class="step-card">
+            <div class="step-header">
+              <span class="step-number">1</span>
+              <h3 class="step-title">Uczniowie</h3>
+            </div>
+            <p class="dash-help">
+              Imię i nazwisko wpisz tak, jak w Librusie (np. <em>Jan Kowalski</em>). Na tej podstawie kreator ustali identyfikatory encji, które możesz sprawdzić i poprawić w sekcji <strong>Identyfikatory encji</strong>.
+            </p>
+            <div id="studentsList" class="dash-students"></div>
+            <button type="button" id="btnAddStudent" class="btn-add-student">
+              <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Dodaj ucznia
+            </button>
+          </div>
+
+          <!-- Krok 2: Elementy -->
+          <div class="step-card">
+            <div class="step-header">
+              <span class="step-number">2</span>
+              <h3 class="step-title">Elementy panelu</h3>
+              <span id="dashCounter" class="dash-counter"></span>
+            </div>
+            <div class="dash-toolbar" role="group" aria-label="Szybki wybór elementów">
+              <button type="button" class="dash-chip" data-preset="all">Wszystko</button>
+              <button type="button" class="dash-chip" data-preset="basic">Podstawowy</button>
+              <button type="button" class="dash-chip" data-preset="nohacs">Bez dodatków HACS</button>
+              <button type="button" class="dash-chip" data-preset="none">Nic</button>
+            </div>
+            <div id="dashElements" class="dash-sections"></div>
+          </div>
+
+          <!-- Krok 3: Ustawienia -->
+          <div class="step-card">
+            <div class="step-header">
+              <span class="step-number">3</span>
+              <h3 class="step-title">Ustawienia</h3>
+            </div>
+            <div class="dash-settings">
+              <div class="input-group">
+                <label for="inputPanelTitle">Tytuł widoku</label>
+                <input type="text" id="inputPanelTitle" class="form-control" value="Szkoła">
+              </div>
+              <div class="input-group">
+                <label for="inputPanelUrl">Adres (URL) widoku</label>
+                <input type="text" id="inputPanelUrl" class="form-control" value="szkola-librus">
+              </div>
+              <div class="input-group">
+                <label for="inputGoal">Cel średniej (pasek)</label>
+                <input type="number" id="inputGoal" class="form-control" value="4.75" min="1" max="6" step="0.05">
+              </div>
+            </div>
+            <div class="dash-scope" role="radiogroup" aria-label="Zakres kodu">
+              <label class="dash-scope-option">
+                <input type="radio" name="dashScope" value="dashboard" checked>
+                <span><strong>Cały pulpit</strong><small>do edytora kodu pustego pulpitu</small></span>
+              </label>
+              <label class="dash-scope-option">
+                <input type="radio" name="dashScope" value="view">
+                <span><strong>Pojedynczy widok</strong><small>do istniejącego pulpitu (Edytuj w YAML)</small></span>
+              </label>
+            </div>
+          </div>
+
+          <button type="button" id="btnGenerate" class="btn-generate">
+            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            Wygeneruj kod
+          </button>
+        </div>
+
+        <!-- Prawa kolumna: podgląd układu -->
+        <aside class="dash-preview" aria-label="Podgląd układu panelu">
+          <div class="dash-preview-head">
+            <span>Podgląd</span>
+            <span class="dash-demo-note" title="Podgląd pokazuje karty na wymyślonych danych">Dane przykładowe</span>
+            <button type="button" id="btnFullPreview" class="btn-tool primary">Pełny podgląd</button>
+            <div id="dashPreviewTabs" class="dash-preview-tabs"></div>
+          </div>
+          <div id="dashPreview" class="dash-preview-canvas ha-podglad"></div>
+          <div class="dash-req">
+            <h4>Wymagane karty z HACS</h4>
+            <ul id="dashRequirements"></ul>
+          </div>
+        </aside>
+      </div>
+
+      <!-- Pełny podgląd panelu -->
+      <dialog id="dashFullPreview" class="dash-full" aria-label="Pełny podgląd panelu">
+        <div class="dash-full-head">
+          <h3>Podgląd panelu</h3>
+          <span class="dash-demo-note">Dane przykładowe</span>
+          <button type="button" id="btnCloseFullPreview" class="btn-tool">Zamknij</button>
+        </div>
+        <div id="dashFullPreviewBody" class="dash-full-body ha-podglad"></div>
+      </dialog>
+
+      <!-- Wynik Generatora -->
+      <div id="resultBox" class="result-box">
+        <div class="result-toolbar">
+          <div class="dash-tabs" role="tablist">
+            <button type="button" id="tabView" class="dash-tab active" role="tab" aria-selected="true">Cały kod</button>
+            <button type="button" id="tabElements" class="dash-tab" role="tab" aria-selected="false">Każdy element osobno</button>
+          </div>
+          <div class="result-actions">
+            <button type="button" id="btnToggleFormat" class="btn-tool">Format: YAML</button>
+            <button type="button" id="btnCopy" class="btn-tool primary">
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
+              </svg>
+              Kopiuj
+            </button>
+            <button type="button" id="btnDownload" class="btn-tool">
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              Pobierz
+            </button>
+          </div>
+        </div>
+        <p id="resultHint" class="dash-hint"></p>
+        <div id="resultView" class="code-container">
+          <pre><code id="outputCode"></code></pre>
+        </div>
+        <div id="resultElements" class="dash-results" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Generator Automatyzacji Powiadomień -->
+  <section id="automatyzacje" class="automations-section">
+    <div class="section-container">
+      <div class="section-header">
+        <span class="section-badge">Automatyzacje YAML</span>
+        <h2 class="section-title">Kreator Powiadomień na Smartfon</h2>
+        <p class="section-subtitle">Wybierz, o czym chcesz być natychmiast informowany, i wygeneruj gotowe reguły automatyzacji dla Home Assistant.</p>
+      </div>
+
+      <div class="generator-box">
+        <div class="input-group" style="max-width: 480px; margin-bottom: 1.5rem;">
+          <label for="inputNotifyTarget">Twoja encja powiadomień mobilnych</label>
+          <input type="text" id="inputNotifyTarget" class="form-control" value="notify.mobile_app_twoj_telefon" placeholder="np. notify.mobile_app_twoj_telefon">
+          <small style="color: var(--text-muted); font-size: 0.75rem;">Encja usługi powiadomień z aplikacji Home Assistant na Twoim telefonie.</small>
+        </div>
+
+        <h4 style="font-size: 0.95rem; margin-bottom: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Wybierz powiadomienia do wygenerowania:</h4>
+
+        <div class="auto-events-grid">
+          <label class="auto-checkbox-card">
+            <input type="checkbox" id="autoEvOcena" checked>
+            <div class="option-info">
+              <span class="option-title">🎓 Nowa ocena</span>
+              <span class="option-desc">Powiadomienie z oceną, przedmiotem, wagą i nauczycielem.</span>
+            </div>
+          </label>
+
+          <label class="auto-checkbox-card">
+            <input type="checkbox" id="autoEvWiadomosc" checked>
+            <div class="option-info">
+              <span class="option-title">📬 Nowa wiadomość</span>
+              <span class="option-desc">Powiadomienie z nadawcą i tematem wiadomości.</span>
+            </div>
+          </label>
+
+          <label class="auto-checkbox-card">
+            <input type="checkbox" id="autoEvUwaga" checked>
+            <div class="option-info">
+              <span class="option-title">⚠️ Nowa uwaga</span>
+              <span class="option-desc">Powiadomienie o wpisie pozytywnym lub negatywnym.</span>
+            </div>
+          </label>
+
+          <label class="auto-checkbox-card">
+            <input type="checkbox" id="autoEvNieobecnosc" checked>
+            <div class="option-info">
+              <span class="option-title">🚸 Nieobecność / spóźnienie</span>
+              <span class="option-desc">Natychmiastowe powiadomienie o zmianie frekwencji.</span>
+            </div>
+          </label>
+
+          <label class="auto-checkbox-card">
+            <input type="checkbox" id="autoEvZadanie" checked>
+            <div class="option-info">
+              <span class="option-title">📚 Nowe zadanie domowe</span>
+              <span class="option-desc">Powiadomienie z terminem oddania pracy.</span>
+            </div>
+          </label>
+
+          <label class="auto-checkbox-card">
+            <input type="checkbox" id="autoEvZdarzenie" checked>
+            <div class="option-info">
+              <span class="option-title">📅 Nowy sprawdzian w terminarzu</span>
+              <span class="option-desc">Powiadomienie o zapowiedzianej klasówce lub kartkówce.</span>
+            </div>
+          </label>
+
+          <label class="auto-checkbox-card">
+            <input type="checkbox" id="autoEvAiWeekly" checked>
+            <div class="option-info">
+              <span class="option-title">🤖 Piątkowy Raport AI (17:00)</span>
+              <span class="option-desc">Podsumowanie postępów tygodnia z odnośnikiem do pulpitu.</span>
+            </div>
+          </label>
+
+          <label class="auto-checkbox-card">
+            <input type="checkbox" id="autoEvAiMessages" checked>
+            <div class="option-info">
+              <span class="option-title">✉️ Streszczenie wiadomości AI</span>
+              <span class="option-desc">Analiza nowej wiadomości przez AI i wysłanie skrótu.</span>
+            </div>
+          </label>
+        </div>
+
+        <button type="button" id="btnGenerateAuto" class="btn-generate" style="margin-top: 1.5rem;">
+          Wygeneruj Automatyzacje YAML
+        </button>
+
+        <div id="resultAutoBox" class="result-box">
+          <div class="result-toolbar">
+            <div class="result-title">
+              <span>Kod automatyzacji Home Assistant</span>
+            </div>
+            <div class="result-actions">
+              <button type="button" id="btnCopyAuto" class="btn-tool primary">Kopiuj YAML</button>
+              <button type="button" id="btnDownloadAuto" class="btn-tool">Pobierz automations.yaml</button>
+            </div>
+          </div>
+          <div class="code-container">
+            <pre><code id="outputAutoCode"></code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Plac Zabaw Promptów AI -->
+  <section id="prompty" class="prompts-section">
+    <div class="section-container">
+      <div class="section-header">
+        <span class="section-badge">Asystent AI</span>
+        <h2 class="section-title">Kreator Własnych Promptów AI</h2>
+        <p class="section-subtitle">Dostosuj styl wypowiedzi modelu sztucznej inteligencji. Wybierz gotowy preset lub klikaj tagi, aby wstawić je do instrukcji.</p>
+      </div>
+
+      <div class="generator-box">
+        <div class="preset-chips-bar">
+          <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); align-self: center;">Wybierz profil:</span>
+          <button type="button" class="preset-chip active" data-preset="weeklyParent">👨‍👩‍👧 Raport dla Rodzica</button>
+          <button type="button" class="preset-chip" data-preset="weeklyStudent">🎮 Motywacyjny dla Ucznia</button>
+          <button type="button" class="preset-chip" data-preset="messagesParent">📬 Streszczenie Wiadomości (Rodzic)</button>
+          <button type="button" class="preset-chip" data-preset="messagesStudent">📝 Zadania z Wiadomości (Uczeń)</button>
+        </div>
+
+        <div class="tags-bar">
+          <span style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted);">Kliknij aby wstawić tag:</span>
+          <button type="button" class="tag-insert-btn" data-tag="{dzisiejsza_data}">+ {dzisiejsza_data}</button>
+          <button type="button" class="tag-insert-btn" data-tag="{imie}">+ {imie}</button>
+          <button type="button" class="tag-insert-btn" data-tag="{oceny:7}">+ {oceny:7}</button>
+          <button type="button" class="tag-insert-btn" data-tag="{oceny:14}">+ {oceny:14}</button>
+          <button type="button" class="tag-insert-btn" data-tag="{sprawdziany:7}">+ {sprawdziany:7}</button>
+          <button type="button" class="tag-insert-btn" data-tag="{zadania:7}">+ {zadania:7}</button>
+          <button type="button" class="tag-insert-btn" data-tag="{frekwencja:7}">+ {frekwencja:7}</button>
+          <button type="button" class="tag-insert-btn" data-tag="{nieobecnosci:7}">+ {nieobecnosci:7}</button>
+          <button type="button" class="tag-insert-btn" data-tag="{frekwencja_semestr}">+ {frekwencja_semestr}</button>
+          <button type="button" class="tag-insert-btn" data-tag="{uwagi:7}">+ {uwagi:7}</button>
+        </div>
+
+        <textarea id="promptEditor" class="prompt-textarea"></textarea>
+
+        <div style="display: flex; justify-content: flex-end; margin-top: 1rem;">
+          <button type="button" id="btnCopyPrompt" class="btn-primary" style="padding: 0.65rem 1.4rem; font-size: 0.9rem;">
+            📋 Skopiuj prompt do konfiguracji integracji
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ & Rozwiązywanie problemów -->
+  <section id="faq" class="faq-section">
+    <div class="section-container">
+      <div class="section-header">
+        <span class="section-badge">Baza wiedzy</span>
+        <h2 class="section-title">Często Zadawane Pytania & Pomoc</h2>
+        <p class="section-subtitle">Rozwiązania najczęstszych pytań i wskazówki dotyczące integracji.</p>
+      </div>
+
+      <div class="faq-accordion">
+        <div class="faq-item">
+          <div class="faq-question">
+            <span>Dlaczego w nowszej wersji Home Assistant nie widzę ocen?</span>
+            <span class="faq-toggle-icon">+</span>
+          </div>
+          <div class="faq-answer">
+            W nowszych środowiskach Pythona biblioteka pomocnicza <code>soupsieve</code> w wersji 3.0 posiadała błąd uniemożliwiający parsowanie tabeli ocen (Issue #39). W integracji <strong>Librus Synergia HA v3.0</strong> wykluczyliśmy tę felerną wersję z <code>manifest.json</code>, co automatycznie rozwiązuje problem.
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-question">
+            <span>Jak podpiąć model AI (OpenAI / Google Gemini / Ollama)?</span>
+            <span class="faq-toggle-icon">+</span>
+          </div>
+          <div class="faq-answer">
+            Integracja wykorzystuje natywny silnik konwersacyjny Home Assistanta (Conversation Agent). Zainstaluj oficjalną integrację <strong>OpenAI Conversation</strong>, <strong>Google Generative AI</strong> lub lokalny model przez <strong>Ollama</strong>, a następnie w opcjach konfiguracji Librusa (Krok 2) wybierz swojego agenta z listy rozwijanej.
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-question">
+            <span>Dlaczego stan sensora AI jest krótki, a na dashboardzie pełny?</span>
+            <span class="faq-toggle-icon">+</span>
+          </div>
+          <div class="faq-answer">
+            Home Assistant ma ograniczenie do 255 znaków dla stanu głównego sensora (<code>state</code>) – specjalnie sformatowaliśmy go jako zwięzłe streszczenie idealne do powiadomień push na smartfon. Kompletny, nieskrócony raport Markdown znajduje się w atrybucie <code>pełny_tekst</code>, z którego korzysta nasza karta dashboardu.
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-question">
+            <span>Błąd w HACS: "is not a valid app repository"</span>
+            <span class="faq-toggle-icon">+</span>
+          </div>
+          <div class="faq-answer">
+            Błąd ten występuje wyłącznie wtedy, gdy podczas dodawania niestandardowego repozytorium w HACS wybrano błędną kategorię (np. AppDaemon lub Plugin). Upewnij się, że w polu <strong>Category</strong> zaznaczono <strong>Integration</strong>.
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-question">
+            <span>Jak odblokować konsolę dziecka dopiero po odrobieniu nauki?</span>
+            <span class="faq-toggle-icon">+</span>
+          </div>
+          <div class="faq-answer">
+            Użyj encji <code>binary_sensor.librus_[uczen]_nauka_odrobiona</code>. Przyjmuje ona stan <code>on</code> tylko wtedy, gdy uczeń „odklikał” wszystkie przygotowania do nadchodzących sprawdzianów na liście To-Do. W automatyzacji włączającej gniazdko konsoli dodaj jako warunek stan tego czujnika równy <code>on</code>!
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Instrukcja instalacji dashboardu w HA -->
+  <section id="instrukcja" class="instructions-section">
+    <div class="section-header">
+      <span class="section-badge">Instrukcja wklejenia</span>
+      <h2 class="section-title">Jak dodać panel w Home Assistant?</h2>
+      <p class="section-subtitle">Wystarczą 3 proste kroki, aby wkleić wygenerowany pulpit na swój system.</p>
+    </div>
+
+    <div class="steps-cards-grid">
+      <div class="inst-card">
+        <span class="inst-badge">1</span>
+        <h3 class="inst-title">Utwórz czysty pulpit</h3>
+        <p class="inst-desc">
+          W Home Assistant przejdź do <strong>Ustawienia → Pulpity → Dodaj pulpit</strong>, wybierz <em>"Nowy pulpit od zera"</em> i wpisz adres (np. <code>szkola-librus</code>).
+        </p>
+      </div>
+
+      <div class="inst-card">
+        <span class="inst-badge">2</span>
+        <h3 class="inst-title">Otwórz edytor kodu</h3>
+        <p class="inst-desc">
+          Otwórz nowo utworzony pulpit, kliknij ikonę ołówka <strong>(Edytuj)</strong> w prawym górnym rogu, następnie trzy kropki (⋮) i wybierz <strong>Edytor konfiguracji pomocniczej (Raw Configuration Editor)</strong>.
+        </p>
+      </div>
+
+      <div class="inst-card">
+        <span class="inst-badge">3</span>
+        <h3 class="inst-title">Wklej kod i zapisz</h3>
+        <p class="inst-desc">
+          Zastąp całą zawartość okna wygenerowanym kodem YAML i kliknij <strong>Zapisz</strong>. Twój interaktywny panel szkolny jest gotowy do użytku!
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-container">
+      <div class="footer-links">
+        <a href="https://github.com/procaktomasz/LibrusSynergiaHA" target="_blank" rel="noopener noreferrer" class="footer-link">Repozytorium GitHub</a>
+        <a href="https://github.com/procaktomasz/LibrusSynergiaHA/issues" target="_blank" rel="noopener noreferrer" class="footer-link">Zgłoś problem (Issues)</a>
+        <a href="https://github.com/procaktomasz/LibrusSynergiaHA/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" class="footer-link">Licencja MIT</a>
+      </div>
+      <p>
+        Integracja <strong>Librus Synergia HA</strong> rozwija projekt pierwotnie stworzony przez <strong>LukMaverick</strong>.<br>
+        Warstwa komunikacyjna: biblioteka <code>librus-apix</code> autorstwa RustySnek.
+      </p>
+    </div>
+  </footer>
+
+  <!-- Powiadomienie Toast -->
+  <div id="toast" class="toast">
+    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+    </svg>
+    <span id="toastMessage">Skopiowano do schowka!</span>
+  </div>
+
+  <!-- Skrypty logiki generatora -->
+  <script src="dashboard-templates.js"></script>
+  <script src="generator.js"></script>
+  <script src="dashboard-demo.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      // 1. Kreator dashboardu
+      const G = window.LibrusGenerator;
+      const studentsContainer = document.getElementById("studentsList");
+      const elementsContainer = document.getElementById("dashElements");
+      const resultBox = document.getElementById("resultBox");
+      const outputCode = document.getElementById("outputCode");
+      const resultView = document.getElementById("resultView");
+      const resultElements = document.getElementById("resultElements");
+      const resultHint = document.getElementById("resultHint");
+      const btnToggleFormat = document.getElementById("btnToggleFormat");
+      const btnCopy = document.getElementById("btnCopy");
+      const btnDownload = document.getElementById("btnDownload");
+      const tabView = document.getElementById("tabView");
+      const tabElements = document.getElementById("tabElements");
+      const toast = document.getElementById("toast");
+
+      const KATALOG = G.dashKatalog();
+      const WSZYSTKIE = KATALOG.flatMap(s => s.elementy.map(e => e.id));
+      const ZESTAWY = {
+        all: WSZYSTKIE,
+        none: [],
+        basic: ["naglowek", "wizytowka", "alerty", "kafle", "dzien", "odliczanie", "zmiany", "plan", "nadchodzace", "oceny_najnowsze", "frekwencja", "wiadomosci"],
+        nohacs: KATALOG.flatMap(s => s.elementy.filter(e => e.wymaga.every(w => w === "card-mod")).map(e => e.id)),
+      };
+      const ZAPIS = "librusKreatorDashboardu";
+
+      const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      const paleta = (id) => G.DASH_PALETY.find(p => p.id === id) || G.DASH_PALETY[0];
+
+      function nowyUczen(fullName, nr) {
+        const shortName = G.getShortName(fullName);
+        return {
+          fullName,
+          shortName,
+          emoji: G.detectGenderIcon(shortName) === "mdi:face-woman" ? "👧" : "🧑‍🎓",
+          paletaId: G.DASH_PALETY[nr % G.DASH_PALETY.length].id,
+          wlasneEncje: {},
+        };
+      }
+
+      let students = [nowyUczen("Jan Kowalski", 0)];
+      let wybrane = new Set(WSZYSTKIE);
+      let aktywnyPodglad = 0;
+      let generatedObj = null;
+      let generatedElements = [];
+      let currentFormat = "yaml";
+      let currentTab = "view";
+
+      // Zapamiętanie ustawień w przeglądarce (tylko wygoda, bez tego też działa)
+      try {
+        const zapis = JSON.parse(localStorage.getItem(ZAPIS) || "null");
+        if (zapis && Array.isArray(zapis.students) && zapis.students.length) {
+          students = zapis.students.map((s, i) => Object.assign(nowyUczen(s.fullName || "Jan Kowalski", i), s, { wlasneEncje: s.wlasneEncje || {} }));
+          wybrane = new Set((zapis.wybrane || WSZYSTKIE).filter(id => WSZYSTKIE.includes(id)));
+          ["inputPanelTitle", "inputPanelUrl", "inputGoal"].forEach(id => {
+            if (zapis[id]) document.getElementById(id).value = zapis[id];
+          });
+        }
+      } catch (e) { /* brak dostępu do localStorage - zostają wartości domyślne */ }
+
+      function zapisz() {
+        try {
+          const dane = { students, wybrane: Array.from(wybrane) };
+          ["inputPanelTitle", "inputPanelUrl", "inputGoal"].forEach(id => { dane[id] = document.getElementById(id).value; });
+          localStorage.setItem(ZAPIS, JSON.stringify(dane));
+        } catch (e) { /* zapis niedostępny */ }
+      }
+
+      function encjeUcznia(st) {
+        return Object.assign(G.dashDomyslneEncje(st.fullName), st.wlasneEncje);
+      }
+
+      function uczniowieDoGeneratora() {
+        const cel = document.getElementById("inputGoal").value;
+        return students.map(st => ({
+          fullName: st.fullName,
+          shortName: st.shortName,
+          emoji: st.emoji,
+          paleta: paleta(st.paletaId),
+          cel,
+          encje: encjeUcznia(st),
+        }));
+      }
+
+      // --- Uczniowie ---
+      function renderStudents() {
+        studentsContainer.innerHTML = students.map((st, idx) => {
+          const p = paleta(st.paletaId);
+          const encje = encjeUcznia(st);
+          const ileWlasnych = Object.keys(st.wlasneEncje).length;
+          return `
+          <div class="dash-student" data-idx="${idx}" style="--c1:${p.c1};--c2:${p.c2}">
+            <div class="dash-student-head">
+              <div class="dash-avatar" aria-hidden="true">${esc(st.emoji)}</div>
+              <div class="dash-student-fields">
+                <div class="input-group">
+                  <label>Imię i nazwisko</label>
+                  <input type="text" class="form-control js-fullname" value="${esc(st.fullName)}" placeholder="np. Jan Kowalski">
+                </div>
+                <div class="input-group">
+                  <label>Imię na panelu</label>
+                  <input type="text" class="form-control js-shortname" value="${esc(st.shortName)}" placeholder="np. Jan">
+                </div>
+              </div>
+              ${students.length > 1 ? `<button type="button" class="btn-icon-danger js-remove" title="Usuń ucznia" aria-label="Usuń ucznia">&times;</button>` : ""}
+            </div>
+            <div class="dash-student-pickers">
+              <div class="dash-picker">
+                <span class="dash-picker-label">Emoji</span>
+                <div class="dash-picker-options">
+                  ${G.DASH_EMOJI.map(em => `<button type="button" class="dash-emoji js-emoji${em === st.emoji ? " active" : ""}" data-emoji="${esc(em)}" aria-pressed="${em === st.emoji}">${esc(em)}</button>`).join("")}
+                </div>
+              </div>
+              <div class="dash-picker">
+                <span class="dash-picker-label">Kolory</span>
+                <div class="dash-picker-options">
+                  ${G.DASH_PALETY.map(pp => `<button type="button" class="dash-swatch js-paleta${pp.id === st.paletaId ? " active" : ""}" data-paleta="${pp.id}" title="${esc(pp.nazwa)}" aria-label="${esc(pp.nazwa)}" aria-pressed="${pp.id === st.paletaId}" style="background:linear-gradient(135deg, ${pp.c1}, ${pp.c2})"></button>`).join("")}
+                </div>
+              </div>
+            </div>
+            <details class="dash-entities">
+              <summary>Identyfikatory encji <span class="dash-entities-status">${ileWlasnych ? `${ileWlasnych} zmienione` : "wg wzorca"}</span></summary>
+              <p class="dash-help">Jeśli Twoje encje mają inne nazwy, wklej ich listę (np. z <em>Narzędzia deweloperskie → Stany</em>, filtr <code>librus</code>) i kliknij <strong>Dopasuj</strong> albo popraw pola ręcznie.</p>
+              <textarea class="form-control dash-paste js-paste" rows="3" placeholder="sensor.librus_jan_kowalski_oceny&#10;sensor.librus_jan_kowalski_frekwencja&#10;…"></textarea>
+              <div class="dash-entities-actions">
+                <button type="button" class="btn-tool primary js-match">Dopasuj</button>
+                <button type="button" class="btn-tool js-reset">Przywróć wzorzec</button>
+                <span class="dash-match-result js-match-result" role="status"></span>
+              </div>
+              <div class="dash-entity-grid">
+                ${G.DASH_ENCJE.map(e => `
+                  <label class="dash-entity">
+                    <span>${esc(e.nazwa)}</span>
+                    <input type="text" class="form-control js-entity${st.wlasneEncje[e.klucz] ? " changed" : ""}" data-klucz="${e.klucz}" value="${esc(encje[e.klucz])}" spellcheck="false">
+                  </label>`).join("")}
+              </div>
+            </details>
+          </div>`;
+        }).join("");
+        renderPreview();
+      }
+
+      function odswiezEncjeUcznia(card, st) {
+        const encje = encjeUcznia(st);
+        card.querySelectorAll(".js-entity").forEach(inp => {
+          inp.value = encje[inp.dataset.klucz];
+          inp.classList.toggle("changed", !!st.wlasneEncje[inp.dataset.klucz]);
+        });
+        const ile = Object.keys(st.wlasneEncje).length;
+        card.querySelector(".dash-entities-status").textContent = ile ? `${ile} zmienione` : "wg wzorca";
+      }
+
+      studentsContainer.addEventListener("input", (e) => {
+        const card = e.target.closest(".dash-student");
+        if (!card) return;
+        const st = students[Number(card.dataset.idx)];
+        if (e.target.classList.contains("js-fullname")) {
+          st.fullName = e.target.value;
+          st.shortName = G.getShortName(e.target.value);
+          card.querySelector(".js-shortname").value = st.shortName;
+          odswiezEncjeUcznia(card, st);
+        } else if (e.target.classList.contains("js-shortname")) {
+          st.shortName = e.target.value;
+        } else if (e.target.classList.contains("js-entity")) {
+          const klucz = e.target.dataset.klucz;
+          const domyslna = G.dashDomyslneEncje(st.fullName)[klucz];
+          const wartosc = e.target.value.trim();
+          if (wartosc && wartosc !== domyslna) st.wlasneEncje[klucz] = wartosc; else delete st.wlasneEncje[klucz];
+          e.target.classList.toggle("changed", !!st.wlasneEncje[klucz]);
+          const ile = Object.keys(st.wlasneEncje).length;
+          card.querySelector(".dash-entities-status").textContent = ile ? `${ile} zmienione` : "wg wzorca";
+        }
+        renderPreview();
+        zapisz();
+      });
+
+      studentsContainer.addEventListener("click", (e) => {
+        const card = e.target.closest(".dash-student");
+        if (!card) return;
+        const idx = Number(card.dataset.idx);
+        const st = students[idx];
+        const btn = e.target.closest("button");
+        if (!btn) return;
+        if (btn.classList.contains("js-remove")) {
+          students.splice(idx, 1);
+          aktywnyPodglad = Math.min(aktywnyPodglad, students.length - 1);
+          renderStudents();
+        } else if (btn.classList.contains("js-emoji")) {
+          st.emoji = btn.dataset.emoji;
+          renderStudents();
+        } else if (btn.classList.contains("js-paleta")) {
+          st.paletaId = btn.dataset.paleta;
+          renderStudents();
+        } else if (btn.classList.contains("js-match")) {
+          const znalezione = G.dashDopasujEncje(card.querySelector(".js-paste").value, st.fullName);
+          const domyslne = G.dashDomyslneEncje(st.fullName);
+          Object.entries(znalezione).forEach(([k, v]) => {
+            if (v !== domyslne[k]) st.wlasneEncje[k] = v; else delete st.wlasneEncje[k];
+          });
+          odswiezEncjeUcznia(card, st);
+          const ile = Object.keys(znalezione).length;
+          card.querySelector(".js-match-result").textContent = ile
+            ? `Dopasowano ${ile} z ${G.DASH_ENCJE.length}`
+            : "Nie znaleziono encji tego ucznia - sprawdź imię i nazwisko";
+        } else if (btn.classList.contains("js-reset")) {
+          st.wlasneEncje = {};
+          odswiezEncjeUcznia(card, st);
+          card.querySelector(".js-match-result").textContent = "";
+        }
+        zapisz();
+      });
+
+      document.getElementById("btnAddStudent").addEventListener("click", () => {
+        students.push(nowyUczen("Anna Kowalska", students.length));
+        aktywnyPodglad = students.length - 1;
+        renderStudents();
+        zapisz();
+      });
+
+      // --- Elementy ---
+      const ETYKIETY_HACS = { "button-card": "button-card", "mushroom": "Mushroom", "apexcharts-card": "ApexCharts", "card-mod": "card-mod" };
+
+      function renderElements() {
+        elementsContainer.innerHTML = KATALOG.map((s, si) => `
+          <div class="dash-section" data-sekcja="${si}">
+            <label class="dash-section-head">
+              <input type="checkbox" class="js-section">
+              <span class="dash-section-name">${esc(s.nazwa)}</span>
+              <span class="dash-section-count"></span>
+            </label>
+            <div class="dash-element-grid">
+              ${s.elementy.map(e => `
+                <label class="dash-element">
+                  <input type="checkbox" class="js-element" value="${e.id}">
+                  <span class="dash-element-body">
+                    <span class="dash-element-name">${esc(e.nazwa)}</span>
+                    <span class="dash-element-desc">${esc(e.opis)}</span>
+                    ${e.wymaga.length ? `<span class="dash-badges">${e.wymaga.map(w => `<span class="dash-badge${w === "card-mod" ? " soft" : ""}">${ETYKIETY_HACS[w] || w}</span>`).join("")}</span>` : ""}
+                  </span>
+                </label>`).join("")}
+            </div>
+          </div>`).join("");
+        syncElements();
+      }
+
+      function syncElements() {
+        elementsContainer.querySelectorAll(".dash-section").forEach(sec => {
+          const boxy = Array.from(sec.querySelectorAll(".js-element"));
+          boxy.forEach(b => { b.checked = wybrane.has(b.value); });
+          const ile = boxy.filter(b => b.checked).length;
+          const glowny = sec.querySelector(".js-section");
+          glowny.checked = ile === boxy.length;
+          glowny.indeterminate = ile > 0 && ile < boxy.length;
+          sec.querySelector(".dash-section-count").textContent = `${ile}/${boxy.length}`;
+          sec.classList.toggle("empty", ile === 0);
+        });
+        document.getElementById("dashCounter").textContent = `${wybrane.size} z ${WSZYSTKIE.length}`;
+        document.querySelectorAll(".dash-chip").forEach(chip => {
+          const zestaw = ZESTAWY[chip.dataset.preset];
+          chip.classList.toggle("active", zestaw.length === wybrane.size && zestaw.every(id => wybrane.has(id)));
+        });
+        renderPreview();
+      }
+
+      elementsContainer.addEventListener("change", (e) => {
+        if (e.target.classList.contains("js-element")) {
+          if (e.target.checked) wybrane.add(e.target.value); else wybrane.delete(e.target.value);
+        } else if (e.target.classList.contains("js-section")) {
+          const sec = e.target.closest(".dash-section");
+          sec.querySelectorAll(".js-element").forEach(b => {
+            if (e.target.checked) wybrane.add(b.value); else wybrane.delete(b.value);
+          });
+        }
+        syncElements();
+        zapisz();
+      });
+
+      document.querySelectorAll(".dash-chip").forEach(chip => chip.addEventListener("click", () => {
+        wybrane = new Set(ZESTAWY[chip.dataset.preset]);
+        syncElements();
+        zapisz();
+      }));
+
+      ["inputPanelTitle", "inputPanelUrl", "inputGoal"].forEach(id => document.getElementById(id).addEventListener("input", zapisz));
+
+      // --- Podgląd na danych przykładowych ---
+      let odswiezPodgladTimer = null;
+
+      function renderPreview() {
+        clearTimeout(odswiezPodgladTimer);
+        odswiezPodgladTimer = setTimeout(rysujPodglad, 60);
+      }
+
+      function rysujPodglad() {
+        const tabs = document.getElementById("dashPreviewTabs");
+        const canvas = document.getElementById("dashPreview");
+        aktywnyPodglad = Math.max(0, Math.min(aktywnyPodglad, students.length - 1));
+        tabs.innerHTML = students.length > 1
+          ? students.map((st, i) => `<button type="button" class="dash-preview-tab${i === aktywnyPodglad ? " active" : ""}" data-idx="${i}">${esc(st.emoji)} ${esc(st.shortName || st.fullName)}</button>`).join("")
+          : "";
+        const uczen = uczniowieDoGeneratora()[aktywnyPodglad];
+        canvas.style.setProperty("--demo-acc", uczen.paleta.acc);
+        const ids = Array.from(wybrane);
+        canvas.innerHTML = ids.length
+          ? window.LibrusDemo.renderujSekcje(G.generateDashboardPreview(uczen, ids), uczen)
+          : `<div class="dash-mini-empty">Zaznacz elementy w kroku 2, aby zobaczyć podgląd panelu.</div>`;
+
+        const req = G.dashWymaganeKarty(ids);
+        document.getElementById("dashRequirements").innerHTML = req.length
+          ? req.map(k => `<li><a href="${k.url}" target="_blank" rel="noopener noreferrer">${esc(k.nazwa)}</a>${k.opcjonalna ? " <small>(opcjonalnie, styl wizytówki)</small>" : ""}</li>`).join("")
+          : "<li>Żadne – wystarczą wbudowane karty Home Assistant.</li>";
+        if (dialogPodgladu.open) rysujPelnyPodglad();
+      }
+
+      // Pełny podgląd: wszyscy uczniowie w układzie sekcji jak w HA na komputerze
+      const dialogPodgladu = document.getElementById("dashFullPreview");
+      function rysujPelnyPodglad() {
+        const ids = Array.from(wybrane);
+        document.getElementById("dashFullPreviewBody").innerHTML = ids.length
+          ? uczniowieDoGeneratora().map(u => `<div style="display:contents;--demo-acc:${u.paleta.acc}">${window.LibrusDemo.renderujSekcje(G.generateDashboardPreview(u, ids), u)}</div>`).join("")
+          : `<div class="dash-mini-empty">Zaznacz elementy w kroku 2.</div>`;
+      }
+      document.getElementById("btnFullPreview").addEventListener("click", () => {
+        rysujPelnyPodglad();
+        dialogPodgladu.showModal();
+      });
+      document.getElementById("btnCloseFullPreview").addEventListener("click", () => dialogPodgladu.close());
+      dialogPodgladu.addEventListener("click", (e) => { if (e.target === dialogPodgladu) dialogPodgladu.close(); });
+
+      document.getElementById("dashPreviewTabs").addEventListener("click", (e) => {
+        const btn = e.target.closest(".dash-preview-tab");
+        if (!btn) return;
+        aktywnyPodglad = Number(btn.dataset.idx);
+        rysujPodglad();
+      });
+
+      renderStudents();
+      renderElements();
+
+      // --- Wynik ---
+      const PODPOWIEDZI = {
+        dashboard: "Utwórz pusty pulpit, otwórz go, kliknij ✏️ Edytuj → ⋮ → Edytor kodu (Raw Configuration Editor), zastąp całą zawartość tym kodem i zapisz.",
+        view: "Na istniejącym pulpicie kliknij ✏️ Edytuj, dodaj nowy widok (+) lub otwórz istniejący, wybierz ⋮ → Edytuj w YAML, wklej kod i zapisz.",
+        elements: "Każdą kartę wklejasz osobno: ✏️ Edytuj pulpit → Dodaj kartę → Ręcznie (YAML). Karty z button-card, Mushroom lub ApexCharts wymagają tych dodatków z HACS.",
+      };
+
+      function zakres() {
+        return document.querySelector('input[name="dashScope"]:checked').value;
+      }
+
+      function kodCalosci() {
+        if (!generatedObj) return "";
+        return currentFormat === "yaml"
+          ? "# Wygenerowano przez Kreator Librus Synergia HA\n" + G.toYaml(generatedObj) + "\n"
+          : JSON.stringify(generatedObj, null, 2);
+      }
+
+      function renderResult() {
+        const widokCalosci = currentTab === "view";
+        tabView.classList.toggle("active", widokCalosci);
+        tabElements.classList.toggle("active", !widokCalosci);
+        tabView.setAttribute("aria-selected", String(widokCalosci));
+        tabElements.setAttribute("aria-selected", String(!widokCalosci));
+        resultView.hidden = !widokCalosci;
+        resultElements.hidden = widokCalosci;
+        btnToggleFormat.hidden = !widokCalosci;
+        btnCopy.hidden = !widokCalosci;
+        btnToggleFormat.textContent = currentFormat === "yaml" ? "Format: YAML" : "Format: JSON";
+        resultHint.textContent = widokCalosci ? PODPOWIEDZI[zakres()] : PODPOWIEDZI.elements;
+        outputCode.textContent = kodCalosci();
+        if (!widokCalosci) {
+          resultElements.innerHTML = generatedElements.length
+            ? generatedElements.map((e, i) => `
+              <details class="dash-result">
+                <summary>
+                  <span class="dash-result-title"><strong>${esc(e.nazwa)}</strong><small>${esc(e.uczen)} · ${esc(e.sekcja)}</small></span>
+                  ${e.wymaga.map(w => `<span class="dash-badge${w === "card-mod" ? " soft" : ""}">${ETYKIETY_HACS[w] || w}</span>`).join("")}
+                  <button type="button" class="btn-tool primary js-copy-element" data-i="${i}">Kopiuj</button>
+                </summary>
+                <pre><code>${esc(e.yaml)}</code></pre>
+              </details>`).join("")
+            : `<p class="dash-hint">Nie zaznaczono żadnych elementów.</p>`;
+        }
+      }
+
+      document.getElementById("btnGenerate").addEventListener("click", () => {
+        if (!wybrane.size) {
+          showToast("Zaznacz co najmniej jeden element panelu");
+          return;
+        }
+        const uczniowie = uczniowieDoGeneratora();
+        const ids = Array.from(wybrane);
+        const widok = G.generateDashboardView(uczniowie, ids, {
+          tytul: document.getElementById("inputPanelTitle").value.trim() || "Szkoła",
+          sciezka: document.getElementById("inputPanelUrl").value.trim() || "szkola-librus",
+        });
+        generatedObj = zakres() === "dashboard" ? { title: widok.title, views: [widok] } : widok;
+        generatedElements = G.generateDashboardElements(uczniowie, ids).map(e => Object.assign(e, { yaml: G.toYaml(e.karta) + "\n" }));
+        renderResult();
+        resultBox.classList.add("active");
+        resultBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+
+      tabView.addEventListener("click", () => { currentTab = "view"; renderResult(); });
+      tabElements.addEventListener("click", () => { currentTab = "elements"; renderResult(); });
+      btnToggleFormat.addEventListener("click", () => {
+        currentFormat = currentFormat === "yaml" ? "json" : "yaml";
+        renderResult();
+      });
+
+      resultElements.addEventListener("click", (e) => {
+        const btn = e.target.closest(".js-copy-element");
+        if (!btn) return;
+        e.preventDefault();
+        const el = generatedElements[Number(btn.dataset.i)];
+        navigator.clipboard.writeText(el.yaml).then(() => showToast(`Skopiowano kartę: ${el.nazwa}`));
+      });
+
+      function showToast(msg) {
+        document.getElementById("toastMessage").textContent = msg;
+        toast.classList.add("show");
+        setTimeout(() => toast.classList.remove("show"), 3000);
+      }
+
+      btnCopy.addEventListener("click", () => {
+        const text = kodCalosci();
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => showToast("Skopiowano kod do schowka!"));
+      });
+
+      function pobierz(tekst, nazwa) {
+        const blob = new Blob([tekst], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = nazwa;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast(`Pobrano plik ${nazwa}`);
+      }
+
+      btnDownload.addEventListener("click", () => {
+        if (!generatedObj) return;
+        if (currentTab === "view") {
+          pobierz(kodCalosci(), currentFormat === "yaml" ? "dashboard_librus.yaml" : "dashboard_librus.json");
+        } else {
+          const tekst = generatedElements.map(e => `# ${e.uczen} / ${e.nazwa}\n${e.yaml}`).join("---\n");
+          pobierz(tekst, "karty_librus.yaml");
+        }
+      });
+
+      document.querySelectorAll('input[name="dashScope"]').forEach(r => r.addEventListener("change", () => {
+        if (resultBox.classList.contains("active")) document.getElementById("btnGenerate").click();
+      }));
+
+      // 2. Automatyzacje Powiadomień
+      const btnGenerateAuto = document.getElementById("btnGenerateAuto");
+      const resultAutoBox = document.getElementById("resultAutoBox");
+      const outputAutoCode = document.getElementById("outputAutoCode");
+      const btnCopyAuto = document.getElementById("btnCopyAuto");
+      const btnDownloadAuto = document.getElementById("btnDownloadAuto");
+
+      btnGenerateAuto.addEventListener("click", function() {
+        const targetEntity = document.getElementById("inputNotifyTarget").value.trim();
+        const selected = {
+          ocena: document.getElementById("autoEvOcena").checked,
+          wiadomosc: document.getElementById("autoEvWiadomosc").checked,
+          uwaga: document.getElementById("autoEvUwaga").checked,
+          nieobecnosc: document.getElementById("autoEvNieobecnosc").checked,
+          zadanie: document.getElementById("autoEvZadanie").checked,
+          zdarzenie: document.getElementById("autoEvZdarzenie").checked,
+          aiWeekly: document.getElementById("autoEvAiWeekly").checked,
+          aiMessages: document.getElementById("autoEvAiMessages").checked
+        };
+        const panelUrl = document.getElementById("inputPanelUrl").value.trim() || "szkola-librus";
+
+        const yaml = window.LibrusGenerator.generateAutomationsYaml(targetEntity, selected, students, panelUrl);
+        outputAutoCode.textContent = yaml;
+        resultAutoBox.classList.add("active");
+        resultAutoBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+
+      btnCopyAuto.addEventListener("click", function() {
+        const text = outputAutoCode.textContent;
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => showToast("Skopiowano automatyzacje do schowka!"));
+      });
+
+      btnDownloadAuto.addEventListener("click", function() {
+        const text = outputAutoCode.textContent;
+        if (!text) return;
+        const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "automations_librus.yaml";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast("Pobrano plik automations_librus.yaml!");
+      });
+
+      // 3. Plac Zabaw Promptów AI
+      const promptEditor = document.getElementById("promptEditor");
+      const btnCopyPrompt = document.getElementById("btnCopyPrompt");
+
+      promptEditor.value = window.LibrusGenerator.PROMPT_PRESETS.weeklyParent;
+
+      document.querySelectorAll(".preset-chip").forEach(btn => {
+        btn.addEventListener("click", function(e) {
+          document.querySelectorAll(".preset-chip").forEach(c => c.classList.remove("active"));
+          e.currentTarget.classList.add("active");
+          const presetKey = e.currentTarget.dataset.preset;
+          if (window.LibrusGenerator.PROMPT_PRESETS[presetKey]) {
+            promptEditor.value = window.LibrusGenerator.PROMPT_PRESETS[presetKey];
+          }
+        });
+      });
+
+      document.querySelectorAll(".tag-insert-btn").forEach(btn => {
+        btn.addEventListener("click", function(e) {
+          const tag = e.currentTarget.dataset.tag;
+          const start = promptEditor.selectionStart;
+          const end = promptEditor.selectionEnd;
+          const text = promptEditor.value;
+          promptEditor.value = text.substring(0, start) + tag + text.substring(end);
+          promptEditor.focus();
+          promptEditor.selectionStart = promptEditor.selectionEnd = start + tag.length;
+        });
+      });
+
+      btnCopyPrompt.addEventListener("click", function() {
+        navigator.clipboard.writeText(promptEditor.value).then(() => showToast("Skopiowano prompt do schowka!"));
+      });
+
+      // 4. FAQ Accordion
+      document.querySelectorAll(".faq-question").forEach(q => {
+        q.addEventListener("click", function() {
+          const item = this.parentElement;
+          item.classList.toggle("open");
+        });
+      });
+    });
+  </script>
+</body>
+</html>
